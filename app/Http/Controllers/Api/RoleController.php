@@ -26,15 +26,15 @@ class RoleController extends Controller
         return response()->json(['message' => 'Role created successfully', 'role' => $role], 201);
     }
 
-    public function show(string $id)
+    public function show(Request $request)
     {
-        $role = Role::findOrFail($id);
+        $role = Role::findOrFail($request->id);
         return response()->json($role);
     }
 
-    public function update(Request $request, string $id)
+    public function update(Request $request)
     {
-        $role = Role::findOrFail($id);
+        $role = Role::findOrFail($request->id);
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -47,9 +47,9 @@ class RoleController extends Controller
         return response()->json(['message' => 'Role updated successfully', 'role' => $role]);
     }
 
-    public function destroy(string $id)
+    public function destroy(Request $request)
     {
-        $role = Role::findOrFail($id);
+        $role = Role::findOrFail($request->id);
         $role->delete();
 
         return response()->json(['message' => 'Role deleted successfully']);

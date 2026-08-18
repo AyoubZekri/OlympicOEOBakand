@@ -32,15 +32,15 @@ class UserController extends Controller
         return response()->json(['message' => 'User created successfully', 'user' => $user], 201);
     }
 
-    public function show(string $id)
+    public function show(Request $request)
     {
-        $user = User::findOrFail($id);
+        $user = User::findOrFail($request->id);
         return response()->json($user);
     }
 
-    public function update(Request $request, string $id)
+    public function update(Request $request)
     {
-        $user = User::findOrFail($id);
+        $user = User::findOrFail($request->id);
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -63,9 +63,9 @@ class UserController extends Controller
         return response()->json(['message' => 'User updated successfully', 'user' => $user]);
     }
 
-    public function destroy(string $id)
+    public function destroy(Request $request)
     {
-        $user = User::findOrFail($id);
+        $user = User::findOrFail($request->id);
         $user->delete();
 
         return response()->json(['message' => 'User deleted successfully']);
