@@ -50,4 +50,21 @@ Route::post('/login', [AuthController::class, 'login']);
     Route::post('/contracts/show', [ContractController::class, 'show']);
     Route::post('/contracts/update', [ContractController::class, 'update']);
     Route::post('/contracts/delete', [ContractController::class, 'destroy']);
+
+    // Funds Routes
+    Route::get('/funds', [\App\Http\Controllers\Api\FundController::class, 'index']);
+    Route::post('/funds/create', [\App\Http\Controllers\Api\FundController::class, 'store']);
+    Route::post('/funds/update', [\App\Http\Controllers\Api\FundController::class, 'update']);
+    Route::post('/funds/delete', [\App\Http\Controllers\Api\FundController::class, 'destroy']);
+
+    // Fund Transactions Routes
+    Route::get('/transactions', [\App\Http\Controllers\Api\FundTransactionController::class, 'index']);
+    Route::post('/transactions/create', [\App\Http\Controllers\Api\FundTransactionController::class, 'store']);
+    Route::post('/transactions/delete', [\App\Http\Controllers\Api\FundTransactionController::class, 'destroy']);
+
+    // Payments Routes
+    Route::get('/payments', [\App\Http\Controllers\Api\PaymentController::class, 'index']);
+    Route::post('/payments/create', [\App\Http\Controllers\Api\PaymentController::class, 'store']);
+    Route::post('/payments/update', [\App\Http\Controllers\Api\PaymentController::class, 'update']);
+    Route::post('/payments/delete', [\App\Http\Controllers\Api\PaymentController::class, 'destroy']);
 // });
