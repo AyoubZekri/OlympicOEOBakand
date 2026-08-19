@@ -45,6 +45,13 @@ class FundTransactionController extends Controller
             return response()->json(['error' => $validator->errors()], 400);
         }
 
+        $fund = Fund::find($request->fundId);
+
+        // Check for sufficient balance for withdrawal and transfer
+        if (($request->type === 'سحب' || $request->type === 'تحويل') && $request->amount > $fund->current_balance) {
+            return response()->json(['error' => 'الرصيد غير كافٍ لإتمام العملية.'], 400);
+        }
+
         $transaction = FundTransaction::create([
             'fund_id' => $request->fundId,
             'type' => $request->type,
@@ -56,7 +63,6 @@ class FundTransactionController extends Controller
         ]);
 
         // Update Fund Balances
-        $fund = Fund::find($request->fundId);
         if ($request->type === 'إيداع') {
             $fund->current_balance += $request->amount;
         } elseif ($request->type === 'سحب' || $request->type === 'تحويل') {
