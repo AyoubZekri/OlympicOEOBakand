@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\IndividualController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -26,4 +27,11 @@ Route::post('/login', [AuthController::class, 'login']);
     Route::post('/users/show', [UserController::class, 'show']);
     Route::post('/users/update', [UserController::class, 'update']);
     Route::post('/users/delete', [UserController::class, 'destroy']);
+
+    // Individuals Routes
+    Route::get('/individuals', [IndividualController::class, 'index']);
+    Route::post('/individuals/create', [IndividualController::class, 'store']);
+    Route::post('/individuals/show', [IndividualController::class, 'show']);
+    Route::post('/individuals/update', [IndividualController::class, 'update']);
+    Route::post('/individuals/delete', [IndividualController::class, 'destroy']);
 // });

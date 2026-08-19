@@ -17,10 +17,16 @@ class Individual extends Model
         'Shirt_number',
         'status',
         'team_id',
+        'added_by',
     ];
 
     public function team()
     {
         return $this->belongsTo(Team::class);
+    }
+
+    public function addedBy()
+    {
+        return $this->belongsTo(User::class, 'added_by');
     }
 }
