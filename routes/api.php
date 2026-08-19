@@ -12,7 +12,7 @@ use App\Http\Controllers\Api\ContractController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
-// Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -67,4 +67,4 @@ Route::post('/login', [AuthController::class, 'login']);
     Route::post('/payments/create', [\App\Http\Controllers\Api\PaymentController::class, 'store']);
     Route::post('/payments/update', [\App\Http\Controllers\Api\PaymentController::class, 'update']);
     Route::post('/payments/delete', [\App\Http\Controllers\Api\PaymentController::class, 'destroy']);
-// });
+ });
