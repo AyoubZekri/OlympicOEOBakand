@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\IndividualController;
 use App\Http\Controllers\Api\TeamController;
+use App\Http\Controllers\Api\ContractController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -42,4 +43,11 @@ Route::post('/login', [AuthController::class, 'login']);
     Route::post('/teams/show', [TeamController::class, 'show']);
     Route::post('/teams/update', [TeamController::class, 'update']);
     Route::post('/teams/delete', [TeamController::class, 'destroy']);
+
+    // Contracts Routes
+    Route::get('/contracts', [ContractController::class, 'index']);
+    Route::post('/contracts/create', [ContractController::class, 'store']);
+    Route::post('/contracts/show', [ContractController::class, 'show']);
+    Route::post('/contracts/update', [ContractController::class, 'update']);
+    Route::post('/contracts/delete', [ContractController::class, 'destroy']);
 // });
