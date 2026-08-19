@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\IndividualController;
+use App\Http\Controllers\Api\TeamController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -34,4 +35,11 @@ Route::post('/login', [AuthController::class, 'login']);
     Route::post('/individuals/show', [IndividualController::class, 'show']);
     Route::post('/individuals/update', [IndividualController::class, 'update']);
     Route::post('/individuals/delete', [IndividualController::class, 'destroy']);
+
+    // Teams Routes
+    Route::get('/teams', [TeamController::class, 'index']);
+    Route::post('/teams/create', [TeamController::class, 'store']);
+    Route::post('/teams/show', [TeamController::class, 'show']);
+    Route::post('/teams/update', [TeamController::class, 'update']);
+    Route::post('/teams/delete', [TeamController::class, 'destroy']);
 // });
