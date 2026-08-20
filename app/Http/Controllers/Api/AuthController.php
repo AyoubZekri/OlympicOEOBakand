@@ -16,7 +16,7 @@ class AuthController extends Controller
 
         if (\Illuminate\Support\Facades\Auth::attempt($credentials)) {
             $user = clone \Illuminate\Support\Facades\Auth::user(); // For IDE typing
-            $user = $request->user();
+            $user = $request->user()->load('role');
             $token = $user->createToken('api-token')->plainTextToken;
 
             return response()->json([
@@ -24,6 +24,7 @@ class AuthController extends Controller
                 'message' => 'User logged in successfully',
                 'data' => [
                     'user' => $user,
+                    'role' => $user->role,
                     'token' => $token
                 ]
             ]);
@@ -47,10 +48,12 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
+        $user = $request->user()->load('role');
         return response()->json([
             'status' => 'success',
             'data' => [
-                'user' => $request->user()
+                'user' => $user,
+                'role' => $user->role
             ]
         ]);
     }

@@ -24,4 +24,9 @@ class PaymentExpense extends Model
     {
         return $this->belongsTo(Individual::class, 'individuals_id');
     }
+
+    public function fundTransaction()
+    {
+        return $this->hasOne(FundTransaction::class, 'payment_expenses_id');
+    }
 }
