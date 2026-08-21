@@ -16,6 +16,7 @@ class PaymentExpense extends Model
         'start_date',
         'end_date',
         'Occasion_Reason_numper',
+        'postal_check',
         'amount',
         'notes',
     ];

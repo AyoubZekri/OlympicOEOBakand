@@ -25,6 +25,7 @@ class PaymentController extends Controller
                 'amountNature' => $payment->amount_Nature,
                 'dateFrom' => $payment->start_date ? Carbon::parse($payment->start_date)->format('Y-m-d') : null,
                 'dateTo' => $payment->end_date ? Carbon::parse($payment->end_date)->format('Y-m-d') : null,
+                'postal_check' => $payment->postal_check,
                 'notes' => $payment->notes,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
@@ -54,6 +55,7 @@ class PaymentController extends Controller
             'Payments_data' => $request->paymentDate,
             'amount_Nature' => $request->amountNature,
             'Occasion_Reason_numper' => $request->checkNumber ?? $request->installmentNumber ?? $request->occasion ?? null,
+            'postal_check' => $request->postal_check ?? null,
             'start_date' => $request->dateFrom,
             'end_date' => $request->dateTo,
             'notes' => $request->notes,
@@ -66,6 +68,7 @@ class PaymentController extends Controller
             'paymentMethod' => $payment->payment_method,
             'paymentDate' => $payment->Payments_data,
             'amountNature' => $payment->amount_Nature,
+            'postal_check' => $payment->postal_check,
             'notes' => $payment->notes,
         ], 201);
     }
@@ -102,17 +105,21 @@ class PaymentController extends Controller
         if ($request->has('amountNature')) {
             $payment->amount_Nature = $request->amountNature;
         }
-        if ($request->has('notes')) {
-            $payment->notes = $request->notes;
-        }
-        if ($request->has('checkNumber') || $request->has('installmentNumber') || $request->has('occasion')) {
-            $payment->Occasion_Reason_numper = $request->checkNumber ?? $request->installmentNumber ?? $request->occasion ?? $payment->Occasion_Reason_numper;
-        }
         if ($request->has('dateFrom')) {
             $payment->start_date = $request->dateFrom;
         }
         if ($request->has('dateTo')) {
             $payment->end_date = $request->dateTo;
+        }
+        // If they send checkNumber, it could be occasion or installment based on legacy
+        if ($request->has('checkNumber') || $request->has('installmentNumber') || $request->has('occasion')) {
+            $payment->Occasion_Reason_numper = $request->checkNumber ?? $request->installmentNumber ?? $request->occasion ?? $payment->Occasion_Reason_numper;
+        }
+        if ($request->has('postal_check')) {
+            $payment->postal_check = $request->postal_check;
+        }
+        if ($request->has('notes')) {
+            $payment->notes = $request->notes;
         }
         
         $payment->save();
@@ -124,6 +131,7 @@ class PaymentController extends Controller
             'paymentMethod' => $payment->payment_method,
             'paymentDate' => $payment->Payments_data,
             'amountNature' => $payment->amount_Nature,
+            'postal_check' => $payment->postal_check,
             'notes' => $payment->notes,
         ]);
     }
