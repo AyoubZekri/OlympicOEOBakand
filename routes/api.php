@@ -67,4 +67,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/create', [\App\Http\Controllers\Api\PaymentController::class, 'store']);
     Route::post('/payments/update', [\App\Http\Controllers\Api\PaymentController::class, 'update']);
     Route::post('/payments/delete', [\App\Http\Controllers\Api\PaymentController::class, 'destroy']);
+    Route::post('/payments/return', [\App\Http\Controllers\Api\PaymentController::class, 'returnPayment']);
  });

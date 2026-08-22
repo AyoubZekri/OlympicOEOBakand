@@ -8,6 +8,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
+use App\Models\Fund;
+use App\Models\FundTransaction;
+
 class PaymentController extends Controller
 {
     public function index()
@@ -28,6 +31,7 @@ class PaymentController extends Controller
                 'postal_check' => $payment->postal_check,
                 'receipt_file' => $payment->receipt_file,
                 'notes' => $payment->notes,
+                'fund_id' => (string) $payment->fund_id,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
         });
@@ -44,6 +48,7 @@ class PaymentController extends Controller
             'paymentDate' => 'required|string',
             'amountNature' => 'required|string',
             'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+            'fund_id' => 'nullable|exists:funds,id',
         ]);
 
         if ($validator->fails()) {
@@ -67,6 +72,7 @@ class PaymentController extends Controller
             'end_date' => $request->dateTo,
             'notes' => $request->notes,
             'receipt_file' => $receiptPath,
+            'fund_id' => $request->fund_id,
         ]);
 
         return response()->json([
@@ -79,6 +85,7 @@ class PaymentController extends Controller
             'postal_check' => $payment->postal_check,
             'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
+            'fund_id' => (string) $payment->fund_id,
         ], 201);
     }
 
@@ -92,6 +99,7 @@ class PaymentController extends Controller
             'paymentDate' => 'sometimes|string',
             'amountNature' => 'sometimes|string',
             'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+            'fund_id' => 'nullable|exists:funds,id',
         ]);
 
         if ($validator->fails()) {
@@ -135,6 +143,9 @@ class PaymentController extends Controller
         if ($request->has('notes')) {
             $payment->notes = $request->notes;
         }
+        if ($request->has('fund_id')) {
+            $payment->fund_id = $request->fund_id;
+        }
         
         $payment->save();
 
@@ -148,6 +159,7 @@ class PaymentController extends Controller
             'postal_check' => $payment->postal_check,
             'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
+            'fund_id' => (string) $payment->fund_id,
         ]);
     }
 
@@ -162,6 +174,48 @@ class PaymentController extends Controller
         }
 
         PaymentExpense::destroy($request->id);
+        return response()->json(['success' => true]);
+    }
+
+    public function returnPayment(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'id' => 'required|exists:payment_expenses,id'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()], 400);
+        }
+
+        $payment = PaymentExpense::find($request->id);
+
+        if ($payment->fund_id) {
+            $fund = Fund::find($payment->fund_id);
+            if ($fund) {
+                // If the original payment was a return advance (deposit), we subtract. Otherwise, we add.
+                $isDeposit = ($payment->amount_Nature === 'إرجاع سلفة');
+                
+                if ($isDeposit) {
+                    $fund->current_balance -= $payment->amount;
+                } else {
+                    $fund->current_balance += $payment->amount;
+                }
+                $fund->save();
+
+                FundTransaction::create([
+                    'fund_id' => $fund->id,
+                    'type' => $isDeposit ? 'سحب' : 'إيداع',
+                    'amount' => $payment->amount,
+                    'transaction_date' => now(),
+                    'description' => 'إسترجاع مبلغ الدفعة/المصروف الملغاة',
+                    'created_by' => auth()->id() ?? null,
+                ]);
+            }
+        }
+
+        // Delete the payment record
+        $payment->delete();
+
         return response()->json(['success' => true]);
     }
 }

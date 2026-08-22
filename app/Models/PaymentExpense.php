@@ -20,6 +20,7 @@ class PaymentExpense extends Model
         'amount',
         'notes',
         'receipt_file',
+        'fund_id',
     ];
 
     public function individual()
@@ -30,5 +31,10 @@ class PaymentExpense extends Model
     public function fundTransaction()
     {
         return $this->hasOne(FundTransaction::class, 'payment_expenses_id');
+    }
+
+    public function fund()
+    {
+        return $this->belongsTo(Fund::class, 'fund_id');
     }
 }
