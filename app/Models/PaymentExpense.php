@@ -19,6 +19,7 @@ class PaymentExpense extends Model
         'postal_check',
         'amount',
         'notes',
+        'receipt_file',
     ];
 
     public function individual()

@@ -26,6 +26,7 @@ class PaymentController extends Controller
                 'dateFrom' => $payment->start_date ? Carbon::parse($payment->start_date)->format('Y-m-d') : null,
                 'dateTo' => $payment->end_date ? Carbon::parse($payment->end_date)->format('Y-m-d') : null,
                 'postal_check' => $payment->postal_check,
+                'receipt_file' => $payment->receipt_file,
                 'notes' => $payment->notes,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
@@ -42,10 +43,16 @@ class PaymentController extends Controller
             'paymentMethod' => 'required|string',
             'paymentDate' => 'required|string',
             'amountNature' => 'required|string',
+            'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['error' => $validator->errors()], 400);
+        }
+
+        $receiptPath = null;
+        if ($request->hasFile('receipt_file')) {
+            $receiptPath = $request->file('receipt_file')->store('receipts', 'public');
         }
 
         $payment = PaymentExpense::create([
@@ -59,6 +66,7 @@ class PaymentController extends Controller
             'start_date' => $request->dateFrom,
             'end_date' => $request->dateTo,
             'notes' => $request->notes,
+            'receipt_file' => $receiptPath,
         ]);
 
         return response()->json([
@@ -69,6 +77,7 @@ class PaymentController extends Controller
             'paymentDate' => $payment->Payments_data,
             'amountNature' => $payment->amount_Nature,
             'postal_check' => $payment->postal_check,
+            'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
         ], 201);
     }
@@ -82,6 +91,7 @@ class PaymentController extends Controller
             'paymentMethod' => 'sometimes|string',
             'paymentDate' => 'sometimes|string',
             'amountNature' => 'sometimes|string',
+            'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
         ]);
 
         if ($validator->fails()) {
@@ -118,6 +128,10 @@ class PaymentController extends Controller
         if ($request->has('postal_check')) {
             $payment->postal_check = $request->postal_check;
         }
+        if ($request->hasFile('receipt_file')) {
+            $path = $request->file('receipt_file')->store('receipts', 'public');
+            $payment->receipt_file = $path;
+        }
         if ($request->has('notes')) {
             $payment->notes = $request->notes;
         }
@@ -132,6 +146,7 @@ class PaymentController extends Controller
             'paymentDate' => $payment->Payments_data,
             'amountNature' => $payment->amount_Nature,
             'postal_check' => $payment->postal_check,
+            'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
         ]);
     }
