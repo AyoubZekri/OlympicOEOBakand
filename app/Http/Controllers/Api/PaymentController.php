@@ -75,6 +75,31 @@ class PaymentController extends Controller
             'fund_id' => $request->fund_id,
         ]);
 
+        if ($payment->fund_id) {
+            $fund = Fund::find($payment->fund_id);
+            if ($fund) {
+                $isDeposit = ($payment->amount_Nature === 'إرجاع سلفة');
+                if ($isDeposit) {
+                    $fund->current_balance += $payment->amount;
+                } else {
+                    $fund->current_balance -= $payment->amount;
+                }
+                $fund->save();
+
+                $individual = \App\Models\Individual::find($payment->individuals_id);
+                $memberName = $individual ? ($individual->first_name . ' ' . $individual->last_name) : 'مصروف عام';
+                
+                FundTransaction::create([
+                    'fund_id' => $fund->id,
+                    'type' => $isDeposit ? 'إيداع' : 'سحب',
+                    'amount' => $payment->amount,
+                    'transaction_date' => $payment->Payments_data ?? now(),
+                    'description' => ($isDeposit ? 'إرجاع سلفة - ' : 'دفع/مصروف (' . $payment->amount_Nature . ') - ') . $memberName,
+                    'created_by' => auth()->id() ?? null,
+                ]);
+            }
+        }
+
         return response()->json([
             'id' => (string) $payment->id,
             'memberId' => (string) $payment->individuals_id,
@@ -107,6 +132,9 @@ class PaymentController extends Controller
         }
 
         $payment = PaymentExpense::find($request->id);
+        $old_amount = (float) $payment->amount;
+        $old_fund_id = $payment->fund_id;
+        $old_isDeposit = ($payment->amount_Nature === 'إرجاع سلفة');
         
         if ($request->has('memberId')) {
             $payment->individuals_id = $request->memberId;
@@ -148,6 +176,97 @@ class PaymentController extends Controller
         }
         
         $payment->save();
+
+        $new_amount = (float) $payment->amount;
+        $new_fund_id = $payment->fund_id;
+        $new_isDeposit = ($payment->amount_Nature === 'إرجاع سلفة');
+
+        if ($old_fund_id == $new_fund_id && $old_isDeposit == $new_isDeposit && $new_fund_id != null) {
+            if ($old_amount != $new_amount) {
+                $fund = Fund::find($new_fund_id);
+                if ($fund) {
+                    $diff = $new_amount - $old_amount; 
+                    if ($diff > 0) {
+                        if ($new_isDeposit) {
+                            $fund->current_balance += $diff;
+                            $type = 'إيداع';
+                        } else {
+                            $fund->current_balance -= $diff;
+                            $type = 'سحب';
+                        }
+                        $fund->save();
+                        FundTransaction::create([
+                            'fund_id' => $fund->id,
+                            'type' => $type,
+                            'amount' => $diff,
+                            'transaction_date' => $payment->Payments_data ?? now(),
+                            'description' => 'تعديل دفعة - الفارق المستحق',
+                            'created_by' => auth()->id() ?? null,
+                        ]);
+                    } else if ($diff < 0) {
+                        $diff = abs($diff); 
+                        if ($new_isDeposit) {
+                            $fund->current_balance -= $diff;
+                            $type = 'سحب';
+                        } else {
+                            $fund->current_balance += $diff;
+                            $type = 'إرجاع';
+                        }
+                        $fund->save();
+                        FundTransaction::create([
+                            'fund_id' => $fund->id,
+                            'type' => $type,
+                            'amount' => $diff,
+                            'transaction_date' => $payment->Payments_data ?? now(),
+                            'description' => 'تعديل دفعة - إرجاع الفارق',
+                            'created_by' => auth()->id() ?? null,
+                        ]);
+                    }
+                }
+            }
+        } else {
+            // Complex case where fund or nature changed. 
+            if ($old_fund_id) {
+                $old_fund = Fund::find($old_fund_id);
+                if ($old_fund) {
+                    if ($old_isDeposit) {
+                        $old_fund->current_balance -= $old_amount;
+                    } else {
+                        $old_fund->current_balance += $old_amount;
+                    }
+                    $old_fund->save();
+                    FundTransaction::create([
+                        'fund_id' => $old_fund->id,
+                        'type' => 'إرجاع',
+                        'amount' => $old_amount,
+                        'transaction_date' => now(),
+                        'description' => 'إلغاء لارتباط الصندوق القديم',
+                        'created_by' => auth()->id() ?? null,
+                    ]);
+                }
+            }
+            if ($new_fund_id) {
+                $new_fund = Fund::find($new_fund_id);
+                if ($new_fund) {
+                    if ($new_isDeposit) {
+                        $new_fund->current_balance += $new_amount;
+                    } else {
+                        $new_fund->current_balance -= $new_amount;
+                    }
+                    $new_fund->save();
+                    $individual = \App\Models\Individual::find($payment->individuals_id);
+                    $memberName = $individual ? ($individual->first_name . ' ' . $individual->last_name) : 'مصروف عام';
+                    FundTransaction::create([
+                        'fund_id' => $new_fund->id,
+                        'type' => $new_isDeposit ? 'إيداع' : 'سحب',
+                        'amount' => $new_amount,
+                        'transaction_date' => $payment->Payments_data ?? now(),
+                        'description' => ($new_isDeposit ? 'إرجاع سلفة - ' : 'دفع/مصروف (' . $payment->amount_Nature . ') - ') . $memberName,
+                        'created_by' => auth()->id() ?? null,
+                    ]);
+                }
+            }
+        }
 
         return response()->json([
             'id' => (string) $payment->id,
@@ -204,7 +323,7 @@ class PaymentController extends Controller
 
                 FundTransaction::create([
                     'fund_id' => $fund->id,
-                    'type' => $isDeposit ? 'سحب' : 'إيداع',
+                    'type' => 'إرجاع',
                     'amount' => $payment->amount,
                     'transaction_date' => now(),
                     'description' => 'إسترجاع مبلغ الدفعة/المصروف الملغاة',
