@@ -30,4 +30,9 @@ class Contract extends Model
     {
         return $this->belongsTo(User::class, 'added_by');
     }
+
+    public function installments()
+    {
+        return $this->hasMany(ContractInstallment::class, 'contract_id');
+    }
 }

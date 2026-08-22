@@ -10,7 +10,7 @@ class ContractController extends Controller
 {
     public function index()
     {
-        $contracts = Contract::with(['individual', 'addedBy'])->get();
+        $contracts = Contract::with(['individual', 'addedBy', 'installments'])->get();
         return response()->json($contracts);
     }
 
@@ -33,14 +33,23 @@ class ContractController extends Controller
 
         $contract = Contract::create($validated);
 
-        return response()->json(['message' => 'Contract created successfully', 'contract' => $contract], 201);
+        if ($request->has('installments') && is_array($request->installments)) {
+            foreach ($request->installments as $inst) {
+                $contract->installments()->create([
+                    'installment_number' => $inst['installment_number'],
+                    'amount' => $inst['amount'],
+                ]);
+            }
+        }
+
+        return response()->json(['message' => 'Contract created successfully', 'contract' => $contract->load('installments')], 201);
     }
 
     public function show(Request $request)
     {
         $request->validate(['id' => 'required|exists:contracts,id']);
         
-        $contract = Contract::with(['individual', 'addedBy'])->findOrFail($request->id);
+        $contract = Contract::with(['individual', 'addedBy', 'installments'])->findOrFail($request->id);
         return response()->json($contract);
     }
 
@@ -66,7 +75,17 @@ class ContractController extends Controller
 
         $contract->update($validated);
 
-        return response()->json(['message' => 'Contract updated successfully', 'contract' => $contract]);
+        if ($request->has('installments') && is_array($request->installments)) {
+            $contract->installments()->delete();
+            foreach ($request->installments as $inst) {
+                $contract->installments()->create([
+                    'installment_number' => $inst['installment_number'],
+                    'amount' => $inst['amount'],
+                ]);
+            }
+        }
+
+        return response()->json(['message' => 'Contract updated successfully', 'contract' => $contract->load('installments')]);
     }
 
     public function destroy(Request $request)
