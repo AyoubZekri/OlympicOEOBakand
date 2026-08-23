@@ -26,8 +26,8 @@ class PaymentController extends Controller
                 'paymentDate' => $payment->Payments_data,
                 'checkNumber' => $payment->Occasion_Reason_numper, // we mapped conditionally
                 'amountNature' => $payment->amount_Nature,
-                'dateFrom' => $payment->start_date ? Carbon::parse($payment->start_date)->format('Y-m-d') : null,
-                'dateTo' => $payment->end_date ? Carbon::parse($payment->end_date)->format('Y-m-d') : null,
+                'dateFrom' => $payment->start_date,
+                'dateTo' => $payment->end_date,
                 'postal_check' => $payment->postal_check,
                 'receipt_file' => $payment->receipt_file,
                 'notes' => $payment->notes,
