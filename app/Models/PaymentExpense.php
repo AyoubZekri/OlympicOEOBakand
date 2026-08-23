@@ -21,11 +21,17 @@ class PaymentExpense extends Model
         'notes',
         'receipt_file',
         'fund_id',
+        'contract_id',
     ];
 
     public function individual()
     {
         return $this->belongsTo(Individual::class, 'individuals_id');
+    }
+
+    public function contract()
+    {
+        return $this->belongsTo(Contract::class, 'contract_id');
     }
 
     public function fundTransaction()

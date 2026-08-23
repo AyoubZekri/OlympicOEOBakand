@@ -73,6 +73,7 @@ class PaymentController extends Controller
             'notes' => $request->notes,
             'receipt_file' => $receiptPath,
             'fund_id' => $request->fund_id,
+            'contract_id' => $request->contract_id,
         ]);
 
         if ($payment->fund_id) {
@@ -173,6 +174,9 @@ class PaymentController extends Controller
         }
         if ($request->has('fund_id')) {
             $payment->fund_id = $request->fund_id;
+        }
+        if ($request->has('contract_id')) {
+            $payment->contract_id = $request->contract_id;
         }
         
         $payment->save();
