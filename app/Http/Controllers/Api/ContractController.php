@@ -19,8 +19,8 @@ class ContractController extends Controller
         $validated = $request->validate([
             'individuals_id' => 'required|exists:individuals,id',
             'numper' => 'nullable|integer',
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'start_date' => 'nullable|string',
+            'end_date' => 'nullable|date',
             'Contract_value' => 'nullable|numeric|min:0',
             'Number_payments' => 'nullable|integer|min:0',
             'Monthly_Salary' => 'nullable|numeric|min:0',
@@ -61,8 +61,8 @@ class ContractController extends Controller
         $validated = $request->validate([
             'individuals_id' => 'sometimes|exists:individuals,id',
             'numper' => 'nullable|integer',
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'start_date' => 'nullable|string',
+            'end_date' => 'nullable|date',
             'Contract_value' => 'nullable|numeric|min:0',
             'Number_payments' => 'nullable|integer|min:0',
             'Monthly_Salary' => 'nullable|numeric|min:0',
