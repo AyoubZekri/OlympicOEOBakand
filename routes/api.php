@@ -36,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/individuals/show', [IndividualController::class, 'show']);
     Route::post('/individuals/update', [IndividualController::class, 'update']);
     Route::post('/individuals/delete', [IndividualController::class, 'destroy']);
+    Route::post('/individuals/print', [IndividualController::class, 'printInternalSystem']);
 
     // Teams Routes
     Route::get('/teams', [TeamController::class, 'index']);

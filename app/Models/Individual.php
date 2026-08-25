@@ -16,6 +16,7 @@ class Individual extends Model
         'birth_date',
         'Shirt_number',
         'status',
+        'is_internal_system_printed',
         'team_id',
         'added_by',
     ];

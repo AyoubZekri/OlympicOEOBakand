@@ -84,4 +84,15 @@ class IndividualController extends Controller
 
         return response()->json(['message' => 'Individual deleted successfully']);
     }
+
+    public function printInternalSystem(Request $request)
+    {
+        $request->validate(['id' => 'required|exists:individuals,id']);
+        
+        $individual = Individual::findOrFail($request->id);
+        $individual->is_internal_system_printed = true;
+        $individual->save();
+
+        return response()->json(['message' => 'Individual internal system printed successfully', 'individual' => $individual]);
+    }
 }
