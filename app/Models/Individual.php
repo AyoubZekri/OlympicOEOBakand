@@ -19,6 +19,7 @@ class Individual extends Model
         'is_internal_system_printed',
         'team_id',
         'added_by',
+        'photo',
     ];
 
     public function team()

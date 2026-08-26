@@ -30,12 +30,17 @@ class IndividualController extends Controller
             'status' => 'nullable|string|in:active,inactive,suspended',
             'team_id' => 'nullable|exists:teams,id',
             'added_by' => 'nullable|exists:users,id',
+            'photo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp|max:5120',
         ]);
 
         // If you want to automatically set added_by to the authenticated user later:
         // if ($request->user()) {
         //     $validated['added_by'] = $request->user()->id;
         // }
+
+        if ($request->hasFile('photo')) {
+            $validated['photo'] = $request->file('photo')->store('photos', 'public');
+        }
 
         $individual = Individual::create($validated);
 
@@ -68,7 +73,12 @@ class IndividualController extends Controller
             'team_id' => 'nullable|exists:teams,id',
             // Typically added_by shouldn't change, but we can allow it if needed.
             'added_by' => 'nullable|exists:users,id',
+            'photo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp|max:5120',
         ]);
+
+        if ($request->hasFile('photo')) {
+            $validated['photo'] = $request->file('photo')->store('photos', 'public');
+        }
 
         $individual->update($validated);
 
