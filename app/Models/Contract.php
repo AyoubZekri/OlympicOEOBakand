@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models;
 
@@ -37,3 +37,5 @@ class Contract extends Model
         return $this->hasMany(ContractInstallment::class, 'contract_id');
     }
 }
+
+

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -100,3 +100,5 @@ class ContractController extends Controller
         return response()->json(['message' => 'Contract deleted successfully']);
     }
 }
+
+
