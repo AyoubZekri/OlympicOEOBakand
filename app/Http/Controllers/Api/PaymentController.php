@@ -71,7 +71,7 @@ class PaymentController extends Controller
             'Occasion_Reason_numper' => $request->checkNumber ?? $request->installmentNumber ?? $request->occasion ?? null,
             'postal_check' => $request->postal_check ?? null,
             'start_date' => $request->dateFrom,
-            'end_date' => $request->dateTo,
+            'end_date' => ($request->dateFrom && $request->numberOfMonths > 1) ? \Carbon\Carbon::parse($request->dateFrom)->addMonths($request->numberOfMonths - 1)->format('Y-m-d') : $request->dateTo,
             'notes' => $request->notes,
             'receipt_file' => $receiptPath,
             'fund_id' => $request->fund_id,
@@ -139,7 +139,7 @@ class PaymentController extends Controller
 
         $payment = PaymentExpense::find($request->id);
         $old_amount = (float) $payment->amount;
-        $old_fund_id = $payment->fund_id;
+        $old_fund_id = ($payment->transaction_type === 'ãÕÇÑíİ ÇÓÊËäÇÆíÉ') ? null : $payment->fund_id;
         $old_isDeposit = ($payment->amount_Nature === 'Ø¥Ø±Ø¬Ø§Ø¹ Ø³Ù„ÙØ©');
         
         if ($request->has('memberId')) {
@@ -157,12 +157,20 @@ class PaymentController extends Controller
         if ($request->has('amountNature')) {
             $payment->amount_Nature = $request->amountNature;
         }
+        if ($request->has('transactionType')) {
+            $payment->transaction_type = $request->transactionType;
+        }
         if ($request->has('dateFrom')) {
             $payment->start_date = $request->dateFrom;
         }
         if ($request->has('dateTo')) {
             $payment->end_date = $request->dateTo;
         }
+        
+        if ($payment->start_date && $payment->Number_of_months > 1) {
+            $payment->end_date = \Carbon\Carbon::parse($payment->start_date)->addMonths($payment->Number_of_months - 1)->format('Y-m-d');
+        }
+
         // If they send checkNumber, it could be occasion or installment based on legacy
         if ($request->has('checkNumber') || $request->has('installmentNumber') || $request->has('occasion')) {
             $payment->Occasion_Reason_numper = $request->checkNumber ?? $request->installmentNumber ?? $request->occasion ?? $payment->Occasion_Reason_numper;
@@ -190,7 +198,7 @@ class PaymentController extends Controller
         $payment->save();
 
         $new_amount = (float) $payment->amount;
-        $new_fund_id = $payment->fund_id;
+        $new_fund_id = ($payment->transaction_type === 'ãÕÇÑíİ ÇÓÊËäÇÆíÉ') ? null : $payment->fund_id;
         $new_isDeposit = ($payment->amount_Nature === 'Ø¥Ø±Ø¬Ø§Ø¹ Ø³Ù„ÙØ©');
 
         if ($old_fund_id == $new_fund_id && $old_isDeposit == $new_isDeposit && $new_fund_id != null) {
@@ -351,6 +359,9 @@ class PaymentController extends Controller
         return response()->json(['success' => true]);
     }
 }
+
+
+
 
 
 

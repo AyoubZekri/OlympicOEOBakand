@@ -13,6 +13,7 @@ class PaymentExpense extends Model
         'Payments_data',
         'payment_method',
         'amount_Nature',
+        'transaction_type',
         'Number_of_months',
         'start_date',
         'end_date',
@@ -45,4 +46,5 @@ class PaymentExpense extends Model
         return $this->belongsTo(Fund::class, 'fund_id');
     }
 }
+
 
