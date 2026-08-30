@@ -33,6 +33,7 @@ class PaymentController extends Controller
                 'receipt_file' => $payment->receipt_file,
                 'notes' => $payment->notes,
                 'fund_id' => (string) $payment->fund_id,
+                "transactionType" => $payment->transaction_type,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
         });
@@ -139,7 +140,7 @@ class PaymentController extends Controller
 
         $payment = PaymentExpense::find($request->id);
         $old_amount = (float) $payment->amount;
-        $old_fund_id = ($payment->transaction_type === 'ãÕÇÑíİ ÇÓÊËäÇÆíÉ') ? null : $payment->fund_id;
+        $old_fund_id = ($payment->transaction_type === 'ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½') ? null : $payment->fund_id;
         $old_isDeposit = ($payment->amount_Nature === 'Ø¥Ø±Ø¬Ø§Ø¹ Ø³Ù„ÙØ©');
         
         if ($request->has('memberId')) {
@@ -198,7 +199,7 @@ class PaymentController extends Controller
         $payment->save();
 
         $new_amount = (float) $payment->amount;
-        $new_fund_id = ($payment->transaction_type === 'ãÕÇÑíİ ÇÓÊËäÇÆíÉ') ? null : $payment->fund_id;
+        $new_fund_id = ($payment->transaction_type === 'ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½') ? null : $payment->fund_id;
         $new_isDeposit = ($payment->amount_Nature === 'Ø¥Ø±Ø¬Ø§Ø¹ Ø³Ù„ÙØ©');
 
         if ($old_fund_id == $new_fund_id && $old_isDeposit == $new_isDeposit && $new_fund_id != null) {
