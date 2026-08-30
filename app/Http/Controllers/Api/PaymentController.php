@@ -49,7 +49,7 @@ class PaymentController extends Controller
             'amountNature' => 'required|string',
             'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
             'fund_id' => 'nullable|exists:funds,id',
-            'Number_of_months' => 'nullable|integer',
+            'numberOfMonths' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
@@ -128,7 +128,7 @@ class PaymentController extends Controller
             'amountNature' => 'sometimes|string',
             'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
             'fund_id' => 'nullable|exists:funds,id',
-            'Number_of_months' => 'nullable|integer',
+            'numberOfMonths' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
@@ -348,4 +348,5 @@ class PaymentController extends Controller
         return response()->json(['success' => true]);
     }
 }
+
 
