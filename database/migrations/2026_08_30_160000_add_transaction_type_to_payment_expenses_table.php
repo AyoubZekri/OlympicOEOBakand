@@ -1,4 +1,4 @@
-<?php
+ï»¿<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -15,7 +15,7 @@ class AddTransactionTypeToPaymentExpensesTable extends Migration
     {
         Schema::table('payment_expenses', function (Blueprint $table) {
             if (!Schema::hasColumn('payment_expenses', 'transaction_type')) {
-                $table->string('transaction_type')->nullable()->after('id')->default('ÏİÚ');
+                $table->string('transaction_type')->nullable()->after('id')->default('');
             }
         });
     }
