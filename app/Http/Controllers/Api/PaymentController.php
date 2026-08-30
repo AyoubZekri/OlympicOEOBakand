@@ -49,6 +49,7 @@ class PaymentController extends Controller
             'amountNature' => 'required|string',
             'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
             'fund_id' => 'nullable|exists:funds,id',
+            'Number_of_months' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
@@ -74,6 +75,7 @@ class PaymentController extends Controller
             'receipt_file' => $receiptPath,
             'fund_id' => $request->fund_id,
             'contract_id' => $request->contract_id,
+            'Number_of_months' => $request->Number_of_months,
         ]);
 
         if ($payment->fund_id) {
@@ -126,6 +128,7 @@ class PaymentController extends Controller
             'amountNature' => 'sometimes|string',
             'receipt_file' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
             'fund_id' => 'nullable|exists:funds,id',
+            'Number_of_months' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
@@ -177,6 +180,9 @@ class PaymentController extends Controller
         }
         if ($request->has('contract_id')) {
             $payment->contract_id = $request->contract_id;
+        }
+        if ($request->has('Number_of_months')) {
+            $payment->Number_of_months = $request->Number_of_months;
         }
         
         $payment->save();
@@ -342,3 +348,4 @@ class PaymentController extends Controller
         return response()->json(['success' => true]);
     }
 }
+

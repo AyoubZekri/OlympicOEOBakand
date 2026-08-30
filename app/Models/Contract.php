@@ -16,6 +16,7 @@ class Contract extends Model
         'Monthly_Salary',
         'Winning_Bonus',
         'Goals_Bonus',
+        'Transportation_Expenses',
         'nots',
         'status',
         'added_by',
