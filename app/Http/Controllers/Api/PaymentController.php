@@ -26,6 +26,7 @@ class PaymentController extends Controller
                 'paymentDate' => $payment->Payments_data,
                 'checkNumber' => $payment->Occasion_Reason_numper, // we mapped conditionally
                 'amountNature' => $payment->amount_Nature,
+                'numberOfMonths' => $payment->Number_of_months,
                 'dateFrom' => $payment->start_date,
                 'dateTo' => $payment->end_date,
                 'postal_check' => $payment->postal_check,
@@ -75,7 +76,7 @@ class PaymentController extends Controller
             'receipt_file' => $receiptPath,
             'fund_id' => $request->fund_id,
             'contract_id' => $request->contract_id,
-            'Number_of_months' => $request->Number_of_months,
+            'Number_of_months' => $request->numberOfMonths ?? 1,
         ]);
 
         if ($payment->fund_id) {
@@ -110,6 +111,7 @@ class PaymentController extends Controller
             'paymentMethod' => $payment->payment_method,
             'paymentDate' => $payment->Payments_data,
             'amountNature' => $payment->amount_Nature,
+                'numberOfMonths' => $payment->Number_of_months,
             'postal_check' => $payment->postal_check,
             'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
@@ -181,8 +183,8 @@ class PaymentController extends Controller
         if ($request->has('contract_id')) {
             $payment->contract_id = $request->contract_id;
         }
-        if ($request->has('Number_of_months')) {
-            $payment->Number_of_months = $request->Number_of_months;
+        if ($request->has('numberOfMonths')) {
+            $payment->Number_of_months = $request->numberOfMonths;
         }
         
         $payment->save();
@@ -285,6 +287,7 @@ class PaymentController extends Controller
             'paymentMethod' => $payment->payment_method,
             'paymentDate' => $payment->Payments_data,
             'amountNature' => $payment->amount_Nature,
+                'numberOfMonths' => $payment->Number_of_months,
             'postal_check' => $payment->postal_check,
             'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
@@ -348,5 +351,8 @@ class PaymentController extends Controller
         return response()->json(['success' => true]);
     }
 }
+
+
+
 
 
