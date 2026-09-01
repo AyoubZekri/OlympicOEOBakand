@@ -19,7 +19,7 @@ class IndividualController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'type' => 'required|string|in:player,coach,employee',
+            'type' => 'required|string',
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'national_id' => 'nullable|string|max:255',
