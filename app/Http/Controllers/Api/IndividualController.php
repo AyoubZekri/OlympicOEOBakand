@@ -61,7 +61,7 @@ class IndividualController extends Controller
         $individual = Individual::findOrFail($request->id);
 
         $validated = $request->validate([
-            'type' => 'sometimes|string|in:player,coach,employee',
+            'type' => 'sometimes|string',
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
             'national_id' => 'nullable|string|max:255',
