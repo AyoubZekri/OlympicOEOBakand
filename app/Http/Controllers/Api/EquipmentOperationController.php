@@ -41,14 +41,14 @@ class EquipmentOperationController extends Controller
                 $equipment = Equipment::findOrFail($item['equipment_id']);
                 
                 if ($equipment->available_quantity < $item['quantity']) {
-                    throw new \Exception("ÇáßãíÉ ÇáãÊæÝÑÉ ááÚÊÇÏ {$equipment->name} ÛíÑ ßÇÝíÉ.");
+                    throw new \Exception("Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø© Ù„Ù„Ø¹ØªØ§Ø¯ {$equipment->name} ØºÙŠØ± Ù…ØªÙˆÙØ±Ø©.");
                 }
 
                 EquipmentMovement::create([
                     'operation_id' => $operation->id,
                     'equipment_id' => $equipment->id,
                     'quantity' => $item['quantity'],
-                    'movement_status' => 'ÊÓáíã',
+                    'movement_status' => 'Ù…Ø³Ù„Ù…',
                     'delivery_date' => $validated['operation_date'],
                     'delivery_condition' => $item['condition'],
                 ]);
@@ -78,12 +78,12 @@ class EquipmentOperationController extends Controller
         try {
             $movement = EquipmentMovement::findOrFail($validated['movement_id']);
             
-            if ($movement->movement_status === 'ÅÓÊÑÌÇÚ') {
-                throw new \Exception("Êã ÅÓÊÑÌÇÚ åÐÇ ÇáÚÊÇÏ ãÓÈÞÇð.");
+            if ($movement->movement_status === 'Ù…Ø±ØªØ¬Ø¹') {
+                throw new \Exception("Ù‡Ø°Ø§ Ø§Ù„Ø¹ØªØ§Ø¯ ØªÙ… Ø¥Ø±Ø¬Ø§Ø¹Ù‡ Ù…Ø³Ø¨Ù‚Ø§Ù‹.");
             }
 
             $movement->update([
-                'movement_status' => 'ÅÓÊÑÌÇÚ',
+                'movement_status' => 'Ù…Ø±ØªØ¬Ø¹',
                 'return_date' => $validated['return_date'],
                 'return_condition' => $validated['return_condition'],
             ]);
