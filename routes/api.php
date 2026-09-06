@@ -80,5 +80,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/equipment-operations', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'index']);
     Route::post('/equipment-operations/create', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'store']);
     Route::post('/equipment-operations/return', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'returnEquipment']);
+    Route::post('/equipment-operations/update', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'update']);
+    Route::post('/equipment-operations/delete', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'destroy']);
 });
 
