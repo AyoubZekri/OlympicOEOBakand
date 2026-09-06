@@ -41,7 +41,7 @@ class EquipmentOperationController extends Controller
                 $equipment = Equipment::findOrFail($item['equipment_id']);
                 
                 if ($equipment->available_quantity < $item['quantity']) {
-                    throw new \Exception("الكمية المتوفرة من العتاد {$equipment->name} غير كافية.");
+                    throw new \Exception("الكمية المطلوبة من العتاد {$equipment->name} غير متوفرة.");
                 }
 
                 EquipmentMovement::create([
@@ -59,7 +59,7 @@ class EquipmentOperationController extends Controller
 
             DB::commit();
 
-            return response()->json(['message' => 'تم إضافة العملية بنجاح', 'operation' => $operation->load('movements.equipment')], 201);
+            return response()->json(['message' => 'تم تسجيل العملية بنجاح', 'operation' => $operation->load('movements.equipment')], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
@@ -79,12 +79,12 @@ class EquipmentOperationController extends Controller
         try {
             $movement = EquipmentMovement::findOrFail($validated['movement_id']);
             
-            if ($movement->movement_status === 'مرجع') {
-                throw new \Exception("تم إرجاع هذا العتاد مسبقاً.");
+            if ($movement->movement_status === 'إرجاع') {
+                throw new \Exception("هذا العتاد تم إرجاعه مسبقاً.");
             }
 
             $movement->update([
-                'movement_status' => 'مرجع',
+                'movement_status' => 'إرجاع',
                 'return_date' => $validated['return_date'],
                 'return_condition' => $validated['return_condition'],
             ]);
@@ -95,6 +95,34 @@ class EquipmentOperationController extends Controller
 
             DB::commit();
             return response()->json(['message' => 'تم إرجاع العتاد بنجاح', 'movement' => $movement], 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    public function undoReturnEquipment(Request $request)
+    {
+        $validated = $request->validate([
+            'movement_id' => 'required|exists:equipment_movements,id',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $movement = EquipmentMovement::findOrFail($validated['movement_id']);
+            
+            $movement->update([
+                'movement_status' => 'تسليم', // Handover status, since we are undoing a return
+                'return_date' => null,
+                'return_condition' => null,
+            ]);
+
+            $equipment = Equipment::findOrFail($movement->equipment_id);
+            $equipment->available_quantity -= $movement->quantity;
+            $equipment->save();
+
+            DB::commit();
+            return response()->json(['message' => 'تم التراجع عن الإرجاع بنجاح', 'movement' => $movement], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
@@ -155,7 +183,7 @@ class EquipmentOperationController extends Controller
             }
 
             DB::commit();
-            return response()->json(['message' => 'تم التعديل بنجاح', 'operation' => $operation->load('movements.equipment')], 200);
+            return response()->json(['message' => 'تم تحديث العملية بنجاح', 'operation' => $operation->load('movements.equipment')], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
@@ -188,7 +216,7 @@ class EquipmentOperationController extends Controller
             $operation->delete();
 
             DB::commit();
-            return response()->json(['message' => 'تم الحذف بنجاح'], 200);
+            return response()->json(['message' => 'تم حذف العملية'], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
