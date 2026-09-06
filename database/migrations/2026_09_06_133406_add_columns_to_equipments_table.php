@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('equipments', function (Blueprint $table) {
             $table->renameColumn('quantity', 'total_quantity');
-            $table->integer('available_quantity')->nullable()->after('quantity');
+            $table->integer('available_quantity')->nullable()->after('total_quantity');
             $table->string('image')->nullable()->after('available_quantity');
         });
     }
