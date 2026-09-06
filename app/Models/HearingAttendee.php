@@ -16,7 +16,7 @@ class HearingAttendee extends Model
 
     public function actionId()
     {
-        return $this->belongsTo(Action::class, 'action_id');
+        return $this->belongsTo(DisciplinaryAction::class, 'action_id');
     }
 
     public function individualsId()
