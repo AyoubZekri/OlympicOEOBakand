@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('disciplinary_actions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('case_id')->nullable()->constrained('cases');
+            $table->foreignId('case_id')->nullable()->constrained('disciplinary_cases');
             $table->string('action_type')->nullable();
             $table->foreignId('added_by')->nullable()->constrained('users');
             $table->timestamp('action_date')->nullable();

@@ -16,7 +16,7 @@ class DisciplinaryAction extends Model
 
     public function caseId()
     {
-        return $this->belongsTo('App\Models\Case', 'case_id');
+        return $this->belongsTo(DisciplinaryCase::class, 'case_id');
     }
 
     public function addedBy()
