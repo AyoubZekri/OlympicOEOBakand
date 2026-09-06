@@ -14,7 +14,7 @@ class ImprovementProgram extends Model
 
     public function evaluationId()
     {
-        return $this->belongsTo(Evaluation::class, 'evaluation_id');
+        return $this->belongsTo(PlayerEvaluation::class, 'evaluation_id');
     }
 
     public function playerId()

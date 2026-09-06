@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('contract_reviews', function (Blueprint $table) {
             $table->id();
             $table->foreignId('player_id')->nullable()->constrained('individuals');
-            $table->foreignId('evaluation_id')->nullable()->constrained('evaluations');
+            $table->foreignId('evaluation_id')->nullable()->constrained('player_evaluations');
             $table->foreignId('club_representative_id')->nullable()->constrained('individuals');
             $table->timestamp('meeting_date')->nullable();
             $table->text('discussed_topics')->nullable();

@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('improvement_programs', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('evaluation_id')->nullable()->constrained('evaluations');
+            $table->foreignId('evaluation_id')->nullable()->constrained('player_evaluations');
             $table->foreignId('player_id')->nullable()->constrained('individuals');
             $table->date('program_start')->nullable();
             $table->date('program_end')->nullable();

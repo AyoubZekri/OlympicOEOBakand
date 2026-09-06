@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('meeting_attendees', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('meeting_id')->nullable()->constrained('meetings');
+            $table->foreignId('meeting_id')->nullable()->constrained('department_meetings');
             $table->foreignId('member_id')->nullable()->constrained('individuals');
         });
     }
