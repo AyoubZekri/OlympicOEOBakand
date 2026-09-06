@@ -16,7 +16,7 @@ class MeetingDecision extends Model
 
     public function meetingId()
     {
-        return $this->belongsTo(Meeting::class, 'meeting_id');
+        return $this->belongsTo(DepartmentMeeting::class, 'meeting_id');
     }
 
     public function assignedTo()
