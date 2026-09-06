@@ -56,4 +56,25 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Role::class);
     }
+
+    public function individual()
+    {
+        return $this->hasOne(Individual::class);
+    }
+
+    // Helper methods to check user type through individual
+    public function isPlayer(): bool
+    {
+        return $this->individual && $this->individual->type === 'player';
+    }
+
+    public function isCoach(): bool
+    {
+        return $this->individual && $this->individual->type === 'coach';
+    }
+
+    public function isEmployee(): bool
+    {
+        return $this->individual && $this->individual->type === 'employee';
+    }
 }

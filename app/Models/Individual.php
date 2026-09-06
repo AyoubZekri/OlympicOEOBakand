@@ -20,6 +20,7 @@ class Individual extends Model
         'team_id',
         'added_by',
         'photo',
+        'user_id',
     ];
 
     public function team()
@@ -30,5 +31,10 @@ class Individual extends Model
     public function addedBy()
     {
         return $this->belongsTo(User::class, 'added_by');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }
