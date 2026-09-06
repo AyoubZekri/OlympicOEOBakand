@@ -10,11 +10,10 @@ class EquipmentOperation extends Model
     use HasFactory;
 
     protected $table = 'equipment_operations';
+    public $timestamps = false;
     protected $guarded = ['id'];
 
-    public $timestamps = false;
-
-    public function memberId()
+    public function member()
     {
         return $this->belongsTo(Individual::class, 'member_id');
     }
@@ -23,4 +22,10 @@ class EquipmentOperation extends Model
     {
         return $this->belongsTo(User::class, 'added_by');
     }
+
+    public function movements()
+    {
+        return $this->hasMany(EquipmentMovement::class, 'operation_id');
+    }
 }
+

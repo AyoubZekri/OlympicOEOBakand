@@ -10,17 +10,17 @@ class EquipmentMovement extends Model
     use HasFactory;
 
     protected $table = 'equipment_movements';
+    public $timestamps = false;
     protected $guarded = ['id'];
 
-    public $timestamps = false;
-
-    public function operationId()
+    public function operation()
     {
         return $this->belongsTo(EquipmentOperation::class, 'operation_id');
     }
 
-    public function equipmentId()
+    public function equipment()
     {
         return $this->belongsTo(Equipment::class, 'equipment_id');
     }
 }
+

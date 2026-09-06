@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -75,4 +75,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/equipments/create', [\App\Http\Controllers\Api\EquipmentController::class, 'store']);
     Route::post('/equipments/update', [\App\Http\Controllers\Api\EquipmentController::class, 'update']);
     Route::post('/equipments/delete', [\App\Http\Controllers\Api\EquipmentController::class, 'destroy']);
+
+    // Equipment Operations Routes
+    Route::get('/equipment-operations', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'index']);
+    Route::post('/equipment-operations/create', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'store']);
+    Route::post('/equipment-operations/return', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'returnEquipment']);
 });
+
