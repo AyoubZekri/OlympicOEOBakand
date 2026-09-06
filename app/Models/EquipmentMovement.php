@@ -16,7 +16,7 @@ class EquipmentMovement extends Model
 
     public function operationId()
     {
-        return $this->belongsTo(Operation::class, 'operation_id');
+        return $this->belongsTo(EquipmentOperation::class, 'operation_id');
     }
 
     public function equipmentId()

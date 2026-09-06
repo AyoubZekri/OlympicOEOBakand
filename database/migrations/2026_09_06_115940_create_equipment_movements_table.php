@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('equipment_movements', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('operation_id')->nullable()->constrained('operations');
+            $table->foreignId('operation_id')->nullable()->constrained('equipment_operations');
             $table->foreignId('equipment_id')->nullable()->constrained('equipments');
             $table->integer('quantity')->nullable();
             $table->string('movement_status')->nullable();
