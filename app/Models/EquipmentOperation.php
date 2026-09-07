@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models;
 
@@ -28,4 +28,5 @@ class EquipmentOperation extends Model
         return $this->hasMany(EquipmentMovement::class, 'operation_id');
     }
 }
+
 
