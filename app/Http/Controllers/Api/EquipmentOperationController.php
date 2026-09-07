@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -22,6 +22,7 @@ class EquipmentOperationController extends Controller
         $validated = $request->validate([
             'member_id' => 'required|exists:individuals,id',
             'operation_date' => 'required|date',
+            'sports_season' => 'nullable|string',
             'items' => 'required|array',
             'items.*.equipment_id' => 'required|exists:equipments,id',
             'items.*.quantity' => 'required|numeric|min:1',
@@ -34,6 +35,7 @@ class EquipmentOperationController extends Controller
             $operation = EquipmentOperation::create([
                 'member_id' => $validated['member_id'],
                 'operation_date' => $validated['operation_date'],
+                'sports_season' => $validated['sports_season'] ?? null,
                 'added_by' => auth()->id() ?? 1,
             ]);
 
@@ -41,14 +43,14 @@ class EquipmentOperationController extends Controller
                 $equipment = Equipment::findOrFail($item['equipment_id']);
                 
                 if ($equipment->available_quantity < $item['quantity']) {
-                    throw new \Exception("الكمية المطلوبة من العتاد {$equipment->name} غير متوفرة.");
+                    throw new \Exception("ط§ظ„ظƒظ…ظٹط© ط§ظ„ظ…ط·ظ„ظˆط¨ط© ظ…ظ† ط§ظ„ط¹طھط§ط¯ {$equipment->name} ط؛ظٹط± ظ…طھظˆظپط±ط©.");
                 }
 
                 EquipmentMovement::create([
                     'operation_id' => $operation->id,
                     'equipment_id' => $equipment->id,
                     'quantity' => $item['quantity'],
-                    'movement_status' => 'تسليم',
+                    'movement_status' => 'طھط³ظ„ظٹظ…',
                     'delivery_date' => $validated['operation_date'],
                     'delivery_condition' => $item['condition'],
                 ]);
@@ -59,7 +61,7 @@ class EquipmentOperationController extends Controller
 
             DB::commit();
 
-            return response()->json(['message' => 'تم تسجيل العملية بنجاح', 'operation' => $operation->load('movements.equipment')], 201);
+            return response()->json(['message' => 'طھظ… طھط³ط¬ظٹظ„ ط§ظ„ط¹ظ…ظ„ظٹط© ط¨ظ†ط¬ط§ط­', 'operation' => $operation->load('movements.equipment')], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
@@ -79,12 +81,12 @@ class EquipmentOperationController extends Controller
         try {
             $movement = EquipmentMovement::findOrFail($validated['movement_id']);
             
-            if ($movement->movement_status === 'إرجاع') {
-                throw new \Exception("هذا العتاد تم إرجاعه مسبقاً.");
+            if ($movement->movement_status === 'ط¥ط±ط¬ط§ط¹') {
+                throw new \Exception("ظ‡ط°ط§ ط§ظ„ط¹طھط§ط¯ طھظ… ط¥ط±ط¬ط§ط¹ظ‡ ظ…ط³ط¨ظ‚ط§ظ‹.");
             }
 
             $movement->update([
-                'movement_status' => 'إرجاع',
+                'movement_status' => 'ط¥ط±ط¬ط§ط¹',
                 'return_date' => $validated['return_date'],
                 'return_condition' => $validated['return_condition'],
             ]);
@@ -94,7 +96,7 @@ class EquipmentOperationController extends Controller
             $equipment->save();
 
             DB::commit();
-            return response()->json(['message' => 'تم إرجاع العتاد بنجاح', 'movement' => $movement], 200);
+            return response()->json(['message' => 'طھظ… ط¥ط±ط¬ط§ط¹ ط§ظ„ط¹طھط§ط¯ ط¨ظ†ط¬ط§ط­', 'movement' => $movement], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
@@ -112,7 +114,7 @@ class EquipmentOperationController extends Controller
             $movement = EquipmentMovement::findOrFail($validated['movement_id']);
             
             $movement->update([
-                'movement_status' => 'تسليم', // Handover status, since we are undoing a return
+                'movement_status' => 'طھط³ظ„ظٹظ…', // Handover status, since we are undoing a return
                 'return_date' => null,
                 'return_condition' => null,
             ]);
@@ -122,7 +124,7 @@ class EquipmentOperationController extends Controller
             $equipment->save();
 
             DB::commit();
-            return response()->json(['message' => 'تم التراجع عن الإرجاع بنجاح', 'movement' => $movement], 200);
+            return response()->json(['message' => 'طھظ… ط§ظ„طھط±ط§ط¬ط¹ ط¹ظ† ط§ظ„ط¥ط±ط¬ط§ط¹ ط¨ظ†ط¬ط§ط­', 'movement' => $movement], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
@@ -135,6 +137,7 @@ class EquipmentOperationController extends Controller
             'id' => 'required|exists:equipment_operations,id',
             'member_id' => 'required|exists:individuals,id',
             'operation_date' => 'required|date',
+            'sports_season' => 'nullable|string',
             'items' => 'required|array',
             'items.*.equipment_id' => 'required|exists:equipments,id',
             'items.*.quantity' => 'required|numeric|min:1',
@@ -147,6 +150,7 @@ class EquipmentOperationController extends Controller
             $operation->update([
                 'member_id' => $validated['member_id'],
                 'operation_date' => $validated['operation_date'],
+                'sports_season' => $validated['sports_season'] ?? null,
             ]);
 
             // Restore all old quantities first
@@ -166,14 +170,14 @@ class EquipmentOperationController extends Controller
                 $equipment = Equipment::findOrFail($item['equipment_id']);
                 
                 if ($equipment->available_quantity < $item['quantity']) {
-                    throw new \Exception("الكمية غير كافية");
+                    throw new \Exception("ط§ظ„ظƒظ…ظٹط© ط؛ظٹط± ظƒط§ظپظٹط©");
                 }
 
                 EquipmentMovement::create([
                     'operation_id' => $operation->id,
                     'equipment_id' => $equipment->id,
                     'quantity' => $item['quantity'],
-                    'movement_status' => 'تسليم',
+                    'movement_status' => 'طھط³ظ„ظٹظ…',
                     'delivery_date' => $validated['operation_date'],
                     'delivery_condition' => $item['condition'],
                 ]);
@@ -183,7 +187,7 @@ class EquipmentOperationController extends Controller
             }
 
             DB::commit();
-            return response()->json(['message' => 'تم تحديث العملية بنجاح', 'operation' => $operation->load('movements.equipment')], 200);
+            return response()->json(['message' => 'طھظ… طھط­ط¯ظٹط« ط§ظ„ط¹ظ…ظ„ظٹط© ط¨ظ†ط¬ط§ط­', 'operation' => $operation->load('movements.equipment')], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
@@ -202,7 +206,7 @@ class EquipmentOperationController extends Controller
             
             // Restore quantities
             foreach ($operation->movements as $movement) {
-                if ($movement->movement_status === 'تسليم') {
+                if ($movement->movement_status === 'طھط³ظ„ظٹظ…') {
                     $equipment = Equipment::find($movement->equipment_id);
                     if ($equipment) {
                         $equipment->available_quantity += $movement->quantity;
@@ -216,10 +220,11 @@ class EquipmentOperationController extends Controller
             $operation->delete();
 
             DB::commit();
-            return response()->json(['message' => 'تم حذف العملية'], 200);
+            return response()->json(['message' => 'طھظ… ط­ط°ظپ ط§ظ„ط¹ظ…ظ„ظٹط©'], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 }
+
