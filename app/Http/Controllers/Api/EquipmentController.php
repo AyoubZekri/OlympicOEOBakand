@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -11,7 +11,7 @@ class EquipmentController extends Controller
 {
     public function index()
     {
-        $equipments = Equipment::all();
+        $equipments = Equipment::with(['movements.operation.member'])->get();
         return response()->json($equipments);
     }
 
@@ -40,7 +40,7 @@ class EquipmentController extends Controller
     {
         $request->validate(['id' => 'required|exists:equipments,id']);
         
-        $equipment = Equipment::findOrFail($request->id);
+        $equipment = Equipment::with(['movements.operation.member'])->findOrFail($request->id);
         return response()->json($equipment);
     }
 

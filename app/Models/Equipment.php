@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models;
 
@@ -16,4 +16,10 @@ class Equipment extends Model
     {
         return $this->belongsTo(User::class, 'added_by');
     }
+
+    public function movements()
+    {
+        return $this->hasMany(EquipmentMovement::class, 'equipment_id');
+    }
 }
+
