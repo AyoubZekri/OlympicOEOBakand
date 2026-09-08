@@ -29,6 +29,10 @@ class DisciplinaryController extends Controller
                 'reason' => $case->description ?? '',
                 'status' => $case->case_status ?? 'مفتوح',
                 'actionId' => $action ? (string) $action->id : null,
+                'incidentLocation' => $case->incident_location ?? '',
+                'violatedRule' => $case->violated_rule ?? '',
+                'presentPeople' => $case->present_people ?? '',
+                'attachments' => $case->attachments ?? '',
             ];
         }
 
@@ -43,6 +47,10 @@ class DisciplinaryController extends Controller
             'incidentDate' => 'required|date',
             'reason' => 'required|string',
             'status' => 'required|string',
+            'incidentLocation' => 'nullable|string',
+            'violatedRule' => 'nullable|string',
+            'presentPeople' => 'nullable|string',
+            'attachments' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
@@ -53,6 +61,10 @@ class DisciplinaryController extends Controller
                 'incident_date' => $validated['incidentDate'],
                 'description' => $validated['reason'],
                 'case_status' => $validated['status'],
+                'incident_location' => $validated['incidentLocation'] ?? null,
+                'violated_rule' => $validated['violatedRule'] ?? null,
+                'present_people' => $validated['presentPeople'] ?? null,
+                'attachments' => $validated['attachments'] ?? null,
                 'added_by' => auth()->id() ?? 1,
             ]);
 
@@ -75,6 +87,10 @@ class DisciplinaryController extends Controller
                     'incidentDate' => date('Y-m-d', strtotime($case->incident_date)),
                     'reason' => $case->description,
                     'status' => $case->case_status,
+                    'incidentLocation' => $case->incident_location,
+                    'violatedRule' => $case->violated_rule,
+                    'presentPeople' => $case->present_people,
+                    'attachments' => $case->attachments,
                 ]
             ], 201);
         } catch (\Exception $e) {
@@ -92,6 +108,10 @@ class DisciplinaryController extends Controller
             'incidentDate' => 'required|date',
             'reason' => 'required|string',
             'status' => 'required|string',
+            'incidentLocation' => 'nullable|string',
+            'violatedRule' => 'nullable|string',
+            'presentPeople' => 'nullable|string',
+            'attachments' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
@@ -103,6 +123,10 @@ class DisciplinaryController extends Controller
                 'incident_date' => $validated['incidentDate'],
                 'description' => $validated['reason'],
                 'case_status' => $validated['status'],
+                'incident_location' => $validated['incidentLocation'] ?? null,
+                'violated_rule' => $validated['violatedRule'] ?? null,
+                'present_people' => $validated['presentPeople'] ?? null,
+                'attachments' => $validated['attachments'] ?? null,
             ]);
 
             $action = DisciplinaryAction::where('case_id', $case->id)->orderBy('id', 'desc')->first();
