@@ -37,6 +37,9 @@ class DisciplinaryController extends Controller
                 'hearingLocation' => $action ? $action->hearing_location ?? '' : '',
                 'player_statements' => $action ? $action->player_statements ?? '' : '',
                 'admin_notes' => $action ? $action->admin_notes ?? '' : '',
+                'decision_outcome' => $action ? $action->decision_outcome ?? '' : '',
+                'decision_reasons' => $action ? $action->decision_reasons ?? '' : '',
+                'effective_date' => $action && $action->effective_date ? date('Y-m-d', strtotime($action->effective_date)) : '',
             ];
         }
 
@@ -59,6 +62,9 @@ class DisciplinaryController extends Controller
             'hearingLocation' => 'nullable|string',
             'player_statements' => 'nullable|string',
             'admin_notes' => 'nullable|string',
+            'decision_outcome' => 'nullable|string',
+            'decision_reasons' => 'nullable|string',
+            'effective_date' => 'nullable|date',
         ]);
 
         DB::beginTransaction();
@@ -84,6 +90,9 @@ class DisciplinaryController extends Controller
                 'hearing_location' => $validated['hearingLocation'] ?? null,
                 'player_statements' => $validated['player_statements'] ?? null,
                 'admin_notes' => $validated['admin_notes'] ?? null,
+                'decision_outcome' => $validated['decision_outcome'] ?? null,
+                'decision_reasons' => $validated['decision_reasons'] ?? null,
+                'effective_date' => $validated['effective_date'] ?? null,
                 'added_by' => auth()->id() ?? 1,
             ]);
 
@@ -107,6 +116,9 @@ class DisciplinaryController extends Controller
                     'hearingLocation' => $action->hearing_location,
                     'player_statements' => $action->player_statements,
                     'admin_notes' => $action->admin_notes,
+                    'decision_outcome' => $action->decision_outcome,
+                    'decision_reasons' => $action->decision_reasons,
+                    'effective_date' => $action->effective_date ? date('Y-m-d', strtotime($action->effective_date)) : '',
                 ]
             ], 201);
         } catch (\Exception $e) {
@@ -132,6 +144,9 @@ class DisciplinaryController extends Controller
             'hearingLocation' => 'nullable|string',
             'player_statements' => 'nullable|string',
             'admin_notes' => 'nullable|string',
+            'decision_outcome' => 'nullable|string',
+            'decision_reasons' => 'nullable|string',
+            'effective_date' => 'nullable|date',
         ]);
 
         DB::beginTransaction();
@@ -158,6 +173,9 @@ class DisciplinaryController extends Controller
                     'hearing_location' => $validated['hearingLocation'] ?? null,
                     'player_statements' => $validated['player_statements'] ?? null,
                     'admin_notes' => $validated['admin_notes'] ?? null,
+                    'decision_outcome' => $validated['decision_outcome'] ?? null,
+                    'decision_reasons' => $validated['decision_reasons'] ?? null,
+                    'effective_date' => $validated['effective_date'] ?? null,
                 ]);
             } else {
                 DisciplinaryAction::create([
@@ -168,6 +186,9 @@ class DisciplinaryController extends Controller
                     'hearing_location' => $validated['hearingLocation'] ?? null,
                     'player_statements' => $validated['player_statements'] ?? null,
                     'admin_notes' => $validated['admin_notes'] ?? null,
+                    'decision_outcome' => $validated['decision_outcome'] ?? null,
+                    'decision_reasons' => $validated['decision_reasons'] ?? null,
+                    'effective_date' => $validated['effective_date'] ?? null,
                     'added_by' => auth()->id() ?? 1,
                 ]);
             }
