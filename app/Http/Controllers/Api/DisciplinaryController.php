@@ -35,6 +35,8 @@ class DisciplinaryController extends Controller
                 'attachments' => $case->attachments ?? '',
                 'deadlineOrHearingDate' => $action && $action->deadline_or_hearing_date ? date('Y-m-d', strtotime($action->deadline_or_hearing_date)) : '',
                 'hearingLocation' => $action ? $action->hearing_location ?? '' : '',
+                'player_statements' => $action ? $action->player_statements ?? '' : '',
+                'admin_notes' => $action ? $action->admin_notes ?? '' : '',
             ];
         }
 
@@ -55,6 +57,8 @@ class DisciplinaryController extends Controller
             'attachments' => 'nullable|string',
             'deadlineOrHearingDate' => 'nullable|date',
             'hearingLocation' => 'nullable|string',
+            'player_statements' => 'nullable|string',
+            'admin_notes' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
@@ -78,6 +82,8 @@ class DisciplinaryController extends Controller
                 'action_date' => $validated['incidentDate'],
                 'deadline_or_hearing_date' => $validated['deadlineOrHearingDate'] ?? null,
                 'hearing_location' => $validated['hearingLocation'] ?? null,
+                'player_statements' => $validated['player_statements'] ?? null,
+                'admin_notes' => $validated['admin_notes'] ?? null,
                 'added_by' => auth()->id() ?? 1,
             ]);
 
@@ -99,6 +105,8 @@ class DisciplinaryController extends Controller
                     'attachments' => $case->attachments,
                     'deadlineOrHearingDate' => $action->deadline_or_hearing_date ? date('Y-m-d', strtotime($action->deadline_or_hearing_date)) : '',
                     'hearingLocation' => $action->hearing_location,
+                    'player_statements' => $action->player_statements,
+                    'admin_notes' => $action->admin_notes,
                 ]
             ], 201);
         } catch (\Exception $e) {
@@ -122,6 +130,8 @@ class DisciplinaryController extends Controller
             'attachments' => 'nullable|string',
             'deadlineOrHearingDate' => 'nullable|date',
             'hearingLocation' => 'nullable|string',
+            'player_statements' => 'nullable|string',
+            'admin_notes' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
@@ -146,6 +156,8 @@ class DisciplinaryController extends Controller
                     'action_date' => $validated['incidentDate'],
                     'deadline_or_hearing_date' => $validated['deadlineOrHearingDate'] ?? null,
                     'hearing_location' => $validated['hearingLocation'] ?? null,
+                    'player_statements' => $validated['player_statements'] ?? null,
+                    'admin_notes' => $validated['admin_notes'] ?? null,
                 ]);
             } else {
                 DisciplinaryAction::create([
@@ -154,6 +166,8 @@ class DisciplinaryController extends Controller
                     'action_date' => $validated['incidentDate'],
                     'deadline_or_hearing_date' => $validated['deadlineOrHearingDate'] ?? null,
                     'hearing_location' => $validated['hearingLocation'] ?? null,
+                    'player_statements' => $validated['player_statements'] ?? null,
+                    'admin_notes' => $validated['admin_notes'] ?? null,
                     'added_by' => auth()->id() ?? 1,
                 ]);
             }
