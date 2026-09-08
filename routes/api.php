@@ -81,8 +81,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/equipment-operations/create', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'store']);
     Route::post('/equipment-operations/return', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'returnEquipment']);
     Route::post('/equipment-operations/undo-return', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'undoReturnEquipment']);
-
     Route::post('/equipment-operations/update', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'update']);
     Route::post('/equipment-operations/delete', [\App\Http\Controllers\Api\EquipmentOperationController::class, 'destroy']);
+
+    // Disciplinary Routes
+    Route::get('/disciplinary', [\App\Http\Controllers\Api\DisciplinaryController::class, 'index']);
+    Route::post('/disciplinary/create', [\App\Http\Controllers\Api\DisciplinaryController::class, 'store']);
+    Route::post('/disciplinary/update', [\App\Http\Controllers\Api\DisciplinaryController::class, 'update']);
+    Route::post('/disciplinary/delete', [\App\Http\Controllers\Api\DisciplinaryController::class, 'destroy']);
+
+    // Correspondences Routes
+    Route::get('/correspondences', [\App\Http\Controllers\Api\CorrespondenceController::class, 'index']);
+    Route::post('/correspondences/create', [\App\Http\Controllers\Api\CorrespondenceController::class, 'store']);
+    Route::post('/correspondences/update', [\App\Http\Controllers\Api\CorrespondenceController::class, 'update']);
+    Route::post('/correspondences/delete', [\App\Http\Controllers\Api\CorrespondenceController::class, 'destroy']);
 });
 
