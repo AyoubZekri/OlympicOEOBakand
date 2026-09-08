@@ -28,6 +28,8 @@ class DisciplinaryController extends Controller
                 'incidentDate' => $case->incident_date ? date('Y-m-d', strtotime($case->incident_date)) : '',
                 'reason' => $case->description ?? '',
                 'status' => $case->case_status ?? 'مفتوح',
+                'is_acknowledged' => $action ? (bool) $action->is_acknowledged : false,
+                'acknowledged_at' => $action ? $action->acknowledged_at : null,
                 'actionId' => $action ? (string) $action->id : null,
                 'incidentLocation' => $case->incident_location ?? '',
                 'violatedRule' => $case->violated_rule ?? '',
@@ -93,6 +95,8 @@ class DisciplinaryController extends Controller
                 'decision_outcome' => $validated['decision_outcome'] ?? null,
                 'decision_reasons' => $validated['decision_reasons'] ?? null,
                 'effective_date' => $validated['effective_date'] ?? null,
+                'is_acknowledged' => $request->has('is_acknowledged') ? $request->is_acknowledged : false,
+                'acknowledged_at' => $request->has('acknowledged_at') ? $request->acknowledged_at : null,
                 'added_by' => auth()->id() ?? 1,
             ]);
 
@@ -176,6 +180,8 @@ class DisciplinaryController extends Controller
                     'decision_outcome' => $validated['decision_outcome'] ?? null,
                     'decision_reasons' => $validated['decision_reasons'] ?? null,
                     'effective_date' => $validated['effective_date'] ?? null,
+                    'is_acknowledged' => $request->has('is_acknowledged') ? $request->is_acknowledged : ($action ? $action->is_acknowledged : false),
+                    'acknowledged_at' => $request->has('acknowledged_at') ? $request->acknowledged_at : ($action ? $action->acknowledged_at : null),
                 ]);
             } else {
                 DisciplinaryAction::create([
@@ -189,6 +195,8 @@ class DisciplinaryController extends Controller
                     'decision_outcome' => $validated['decision_outcome'] ?? null,
                     'decision_reasons' => $validated['decision_reasons'] ?? null,
                     'effective_date' => $validated['effective_date'] ?? null,
+                    'is_acknowledged' => $request->has('is_acknowledged') ? $request->is_acknowledged : false,
+                    'acknowledged_at' => $request->has('acknowledged_at') ? $request->acknowledged_at : null,
                     'added_by' => auth()->id() ?? 1,
                 ]);
             }
@@ -227,4 +235,5 @@ class DisciplinaryController extends Controller
         }
     }
 }
+
 
