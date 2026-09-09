@@ -108,5 +108,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/player-evaluations/create', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'store']);
     Route::post('/player-evaluations/update', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'update']);
     Route::post('/player-evaluations/delete', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'destroy']);
+
+    // Contract Reviews Routes
+    Route::get('/contract-reviews', [\App\Http\Controllers\Api\ContractReviewController::class, 'index']);
+    Route::post('/contract-reviews/create', [\App\Http\Controllers\Api\ContractReviewController::class, 'create']);
+    Route::post('/contract-reviews/update', [\App\Http\Controllers\Api\ContractReviewController::class, 'update']);
+    Route::post('/contract-reviews/delete', [\App\Http\Controllers\Api\ContractReviewController::class, 'delete']);
 });
 

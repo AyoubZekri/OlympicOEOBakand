@@ -12,6 +12,12 @@ class ContractReview extends Model
     protected $table = 'contract_reviews';
     protected $guarded = ['id'];
 
+    protected $casts = [
+        'requires_official_avenant' => 'boolean',
+        'player_signature' => 'boolean',
+        'meeting_date' => 'datetime',
+    ];
+
     public function playerId()
     {
         return $this->belongsTo(Individual::class, 'player_id');
