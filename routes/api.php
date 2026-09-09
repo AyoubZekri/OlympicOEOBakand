@@ -95,5 +95,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/correspondences/create', [\App\Http\Controllers\Api\CorrespondenceController::class, 'store']);
     Route::post('/correspondences/update', [\App\Http\Controllers\Api\CorrespondenceController::class, 'update']);
     Route::post('/correspondences/delete', [\App\Http\Controllers\Api\CorrespondenceController::class, 'destroy']);
+
+    // Player Evaluations Routes
+    Route::get('/player-evaluations', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'index']);
+    Route::post('/player-evaluations/create', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'store']);
+    Route::post('/player-evaluations/update', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'update']);
+    Route::post('/player-evaluations/delete', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'destroy']);
 });
 
