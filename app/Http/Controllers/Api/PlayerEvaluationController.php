@@ -75,7 +75,7 @@ class PlayerEvaluationController extends Controller
         try {
             $evaluation = PlayerEvaluation::create([
                 'player_id' => $validated['playerId'],
-                'coach_id' => auth()->id() ?? 1, // Fallback if not authenticated
+                'coach_id' => null, // Fallback if not authenticated
                 'season' => $validated['season'] ?? null,
                 'evaluation_type' => $validated['evaluationType'],
                 'period_start' => $validated['periodStart'] ?? null,
@@ -179,3 +179,4 @@ class PlayerEvaluationController extends Controller
         }
     }
 }
+
