@@ -9,16 +9,15 @@ class ImprovementProgram extends Model
 {
     use HasFactory;
 
-    protected $table = 'improvement_programs';
-    protected $guarded = ['id'];
-
-    public function evaluationId()
-    {
-        return $this->belongsTo(PlayerEvaluation::class, 'evaluation_id');
-    }
-
-    public function playerId()
-    {
-        return $this->belongsTo(Individual::class, 'player_id');
-    }
+    protected $fillable = [
+        'evaluation_id',
+        'player_id',
+        'program_start',
+        'program_end',
+        'areas_to_improve',
+        'specific_goals',
+        'actions_required',
+        'next_evaluation_date',
+        'is_acknowledged',
+    ];
 }

@@ -13,6 +13,13 @@ use App\Http\Controllers\Api\ContractController;
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
+
+    // Improvement Programs Routes
+    Route::get('/improvement-programs', [\App\Http\Controllers\Api\ImprovementProgramController::class, 'index']);
+    Route::post('/improvement-programs/create', [\App\Http\Controllers\Api\ImprovementProgramController::class, 'create']);
+    Route::post('/improvement-programs/update', [\App\Http\Controllers\Api\ImprovementProgramController::class, 'update']);
+    Route::post('/improvement-programs/delete', [\App\Http\Controllers\Api\ImprovementProgramController::class, 'delete']);
+
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
