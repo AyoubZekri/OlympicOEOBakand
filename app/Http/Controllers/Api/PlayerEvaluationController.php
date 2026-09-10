@@ -171,6 +171,11 @@ class PlayerEvaluationController extends Controller
 
         try {
             $evaluation = PlayerEvaluation::findOrFail($validated['id']);
+            
+            // Delete child records to satisfy foreign key constraints
+            \DB::table('improvement_programs')->where('evaluation_id', $evaluation->id)->delete();
+            \DB::table('contract_reviews')->where('evaluation_id', $evaluation->id)->delete();
+            
             $evaluation->delete();
 
             return response()->json(['message' => 'تم حذف التقييم بنجاح'], 200);
