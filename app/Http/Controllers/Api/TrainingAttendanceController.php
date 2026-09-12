@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -20,7 +20,7 @@ class TrainingAttendanceController extends Controller
     {
         $session = TrainingSession::with('teamId')->findOrFail($sessionId);
 
-        $players = Individual::where('type', 'لاعب')
+        $players = Individual::where('type', 'player')
             ->where('team_id', $session->team_id)
             ->orderBy('first_name')
             ->get();
@@ -116,4 +116,5 @@ class TrainingAttendanceController extends Controller
         }
     }
 }
+
 
