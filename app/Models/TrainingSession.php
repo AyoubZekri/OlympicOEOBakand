@@ -16,4 +16,9 @@ class TrainingSession extends Model
     {
         return $this->belongsTo(Individual::class, 'supervisor_id');
     }
+
+    public function teamId()
+    {
+        return $this->belongsTo(Team::class, 'team_id');
+    }
 }
