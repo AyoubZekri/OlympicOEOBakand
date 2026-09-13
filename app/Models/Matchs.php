@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models;
 
@@ -20,5 +20,10 @@ class Matchs extends Model
     public function adminId()
     {
         return $this->belongsTo(User::class, 'admin_id');
+    }
+
+    public function team()
+    {
+        return $this->belongsTo(Team::class, 'team_id');
     }
 }

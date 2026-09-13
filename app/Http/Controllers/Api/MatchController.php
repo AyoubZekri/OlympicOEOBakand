@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -13,7 +13,7 @@ class MatchController extends Controller
     public function index()
     {
         try {
-            $matches = Matchs::with(['coachId', 'adminId'])->orderBy('created_at', 'desc')->get();
+            $matches = Matchs::with(['coachId', 'adminId', 'team'])->orderBy('created_at', 'desc')->get();
             return response()->json([
                 'status' => 'success',
                 'data' => $matches
@@ -39,6 +39,7 @@ class MatchController extends Controller
             'gathering_location' => 'nullable|string|max:255',
             'coach_id' => 'required|exists:individuals,id',
             'admin_id' => 'required|exists:users,id',
+            'team_id' => 'required|exists:teams,id',
         ]);
 
         if ($validator->fails()) {
@@ -54,7 +55,7 @@ class MatchController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Match created successfully',
-                'data' => $match->load(['coachId', 'adminId'])
+                'data' => $match->load(['coachId', 'adminId', 'team'])
             ], 201);
         } catch (Exception $e) {
             return response()->json([
@@ -78,6 +79,7 @@ class MatchController extends Controller
             'gathering_location' => 'nullable|string|max:255',
             'coach_id' => 'required|exists:individuals,id',
             'admin_id' => 'required|exists:users,id',
+            'team_id' => 'required|exists:teams,id',
         ]);
 
         if ($validator->fails()) {
@@ -94,7 +96,7 @@ class MatchController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Match updated successfully',
-                'data' => $match->load(['coachId', 'adminId'])
+                'data' => $match->load(['coachId', 'adminId', 'team'])
             ]);
         } catch (Exception $e) {
             return response()->json([
