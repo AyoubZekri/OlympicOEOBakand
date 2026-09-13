@@ -14,7 +14,7 @@ class TravelItinerary extends Model
 
     public function matchId()
     {
-        return $this->belongsTo('App\Models\Match', 'match_id');
+        return $this->belongsTo('App\Models\Matchs', 'match_id');
     }
 
     public function headOfDelegationId()
