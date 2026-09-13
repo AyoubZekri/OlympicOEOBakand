@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\IndividualController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\ContractController;
+use App\Http\Controllers\Api\MatchController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -131,5 +132,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/contract-reviews/create', [\App\Http\Controllers\Api\ContractReviewController::class, 'create']);
     Route::post('/contract-reviews/update', [\App\Http\Controllers\Api\ContractReviewController::class, 'update']);
     Route::post('/contract-reviews/delete', [\App\Http\Controllers\Api\ContractReviewController::class, 'delete']);
+
+    // Matches Routes
+    Route::get('/matches', [MatchController::class, 'index']);
+    Route::post('/matches/create', [MatchController::class, 'store']);
+    Route::post('/matches/update', [MatchController::class, 'update']);
+    Route::post('/matches/delete', [MatchController::class, 'destroy']);
 });
 
