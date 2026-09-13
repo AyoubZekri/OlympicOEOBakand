@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\IndividualController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\ContractController;
 use App\Http\Controllers\Api\MatchController;
+use App\Http\Controllers\Api\MatchCallupController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -138,5 +139,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/matches/create', [MatchController::class, 'store']);
     Route::post('/matches/update', [MatchController::class, 'update']);
     Route::post('/matches/delete', [MatchController::class, 'destroy']);
+
+    // Match Callups Routes
+    Route::get('/matches/callups/{match_id}', [MatchCallupController::class, 'index']);
+    Route::post('/matches/callups/create', [MatchCallupController::class, 'store']);
+    Route::post('/matches/callups/delete', [MatchCallupController::class, 'destroy']);
 });
+
 
