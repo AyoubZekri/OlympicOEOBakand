@@ -148,4 +148,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Administrative Match Reports Routes
     Route::get('/administrative-reports/{match_id}', [\App\Http\Controllers\Api\AdministrativeMatchReportController::class, 'show']);
     Route::post('/administrative-reports/save', [\App\Http\Controllers\Api\AdministrativeMatchReportController::class, 'save']);
+
+    // Medical Records Routes
+    Route::get('/medical-records', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'index']);
+    Route::post('/medical-records/create', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'store']);
+    Route::post('/medical-records/update/{id}', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'update']);
+    Route::post('/medical-records/delete/{id}', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'destroy']);
 });
