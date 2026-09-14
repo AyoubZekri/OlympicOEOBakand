@@ -35,6 +35,9 @@ class MatchController extends Controller
             'match_title' => 'required|string|max:255',
             'match_date' => 'required|date',
             'location' => 'required|string|max:255',
+            'team_score' => 'nullable|integer',
+            'opponent_score' => 'nullable|integer',
+            'match_status' => 'nullable|string|max:255',
             'gathering_time' => 'nullable|date',
             'gathering_location' => 'nullable|string|max:255',
             'coach_id' => 'required|exists:individuals,id',
@@ -75,6 +78,9 @@ class MatchController extends Controller
             'match_title' => 'required|string|max:255',
             'match_date' => 'required|date',
             'location' => 'required|string|max:255',
+            'team_score' => 'nullable|integer',
+            'opponent_score' => 'nullable|integer',
+            'match_status' => 'nullable|string|max:255',
             'gathering_time' => 'nullable|date',
             'gathering_location' => 'nullable|string|max:255',
             'coach_id' => 'required|exists:individuals,id',
@@ -137,3 +143,4 @@ class MatchController extends Controller
         }
     }
 }
+
