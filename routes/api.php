@@ -154,4 +154,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/medical-records/create', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'store']);
     Route::post('/medical-records/update/{id}', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'update']);
     Route::post('/medical-records/delete/{id}', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'destroy']);
+
+    // Player Clearance Routes
+    Route::get('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'show']);
+    Route::post('/player-clearance', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'updateOrCreate']);
 });
