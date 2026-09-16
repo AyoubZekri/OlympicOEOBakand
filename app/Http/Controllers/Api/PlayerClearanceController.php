@@ -36,7 +36,7 @@ class PlayerClearanceController extends Controller
             
             'equipment_status' => 'nullable|string|max:255',
             'equipment_notes' => 'nullable|string',
-            'equipment_manager_id' => 'nullable|exists:individuals,id',
+            'equipment_manager_id' => 'nullable|exists:users,id',
             'equipment_cleared_at' => 'nullable|date',
             
             'admin_status' => 'nullable|string|max:255',
@@ -44,15 +44,15 @@ class PlayerClearanceController extends Controller
             'admin_cleared_at' => 'nullable|date',
             
             'sporting_status' => 'nullable|string|max:255',
-            'sporting_director_id' => 'nullable|exists:individuals,id',
+            'sporting_director_id' => 'nullable|exists:users,id',
             'sporting_cleared_at' => 'nullable|date',
             
             'financial_status' => 'nullable|string|max:255',
-            'finance_manager_id' => 'nullable|exists:individuals,id',
+            'finance_manager_id' => 'nullable|exists:users,id',
             'finance_cleared_at' => 'nullable|date',
             
             'medical_status' => 'nullable|string|max:255',
-            'medical_staff_id' => 'nullable|exists:individuals,id',
+            'medical_staff_id' => 'nullable|exists:users,id',
             'medical_cleared_at' => 'nullable|date',
             
             'general_notes' => 'nullable|string',
