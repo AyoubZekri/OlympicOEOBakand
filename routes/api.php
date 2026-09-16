@@ -158,4 +158,5 @@ Route::middleware('auth:sanctum')->group(function () {
     // Player Clearance Routes
     Route::get('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'show']);
     Route::post('/player-clearance', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'updateOrCreate']);
+    Route::delete('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'destroy']);
 });

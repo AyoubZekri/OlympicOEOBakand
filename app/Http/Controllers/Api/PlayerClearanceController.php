@@ -86,4 +86,18 @@ class PlayerClearanceController extends Controller
             ], 500);
         }
     }
+
+    public function destroy($player_id)
+    {
+        try {
+            $clearance = PlayerClearance::where('player_id', $player_id)->first();
+            if (!$clearance) {
+                return response()->json(['status' => 'error', 'message' => 'Player clearance not found'], 404);
+            }
+            $clearance->delete();
+            return response()->json(['status' => 'success', 'message' => 'Player clearance deleted successfully']);
+        } catch (Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to delete player clearance', 'error' => $e->getMessage()], 500);
+        }
+    }
 }
