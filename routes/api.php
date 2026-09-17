@@ -160,3 +160,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/player-clearance', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'updateOrCreate']);
     Route::delete('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'destroy']);
 });
+
+use App\Http\Controllers\Api\MeetingController;
+use App\Http\Controllers\Api\DecisionController;
+Route::apiResource('meetings', MeetingController::class);
+Route::apiResource('decisions', DecisionController::class);
