@@ -10,7 +10,20 @@ class MeetingController extends Controller
 {
     public function index()
     {
-        return response()->json(Meeting::orderBy('date', 'desc')->orderBy('time', 'desc')->get());
+        $meetings = Meeting::with('meetingAttendees.memberId')->orderBy('date', 'desc')->orderBy('time', 'desc')->get();
+        $meetings->transform(function ($meeting) {
+            $attendees = $meeting->meetingAttendees->map(function ($ma) {
+                return [
+                    'id' => (string) $ma->member_id,
+                    'name' => $ma->memberId ? $ma->memberId->first_name . ' ' . $ma->memberId->last_name : 'ÚÖæ',
+                    'status' => 'confirmed'
+                ];
+            });
+            unset($meeting->meetingAttendees);
+            $meeting->attendees = $attendees;
+            return $meeting;
+        });
+        return response()->json($meetings);
     }
 
     public function store(Request $request)
@@ -46,6 +59,16 @@ class MeetingController extends Controller
 
     public function show(Meeting $meeting)
     {
+        $meeting->load('meetingAttendees.memberId');
+        $attendees = $meeting->meetingAttendees->map(function ($ma) {
+            return [
+                'id' => (string) $ma->member_id,
+                'name' => $ma->memberId ? $ma->memberId->first_name . ' ' . $ma->memberId->last_name : 'ÚÖæ',
+                'status' => 'confirmed'
+            ];
+        });
+        unset($meeting->meetingAttendees);
+        $meeting->attendees = $attendees;
         return response()->json($meeting);
     }
 
@@ -90,4 +113,5 @@ class MeetingController extends Controller
         return response()->json(null, 204);
     }
 }
+
 

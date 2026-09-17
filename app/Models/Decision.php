@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models;
 
@@ -9,8 +9,10 @@ class Decision extends Model
 {
     use HasFactory;
 
+    protected $table = 'meeting_decisions';
+
     protected $fillable = [
-        'meeting_id', 'category', 'type', 'checklist_items', 'text', 'assignee_ids', 'deadline', 'progress'
+        'meeting_id', 'category', 'type', 'checklist_items', 'decision_text', 'assignee_ids', 'deadline', 'progress', 'execution_status', 'execution_notes'
     ];
 
     protected $casts = [

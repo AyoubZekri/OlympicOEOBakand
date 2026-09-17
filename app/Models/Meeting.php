@@ -15,9 +15,15 @@ class Meeting extends Model
         'topic', 'date', 'time', 'location', 'attendees', 'points'
     ];
 
+    public function meetingAttendees()
+    {
+        return $this->hasMany(MeetingAttendee::class, 'meeting_id');
+    }
+
     protected $casts = [
         'attendees' => 'array',
         'points' => 'array',
     ];
 }
+
 
