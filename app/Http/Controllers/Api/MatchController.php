@@ -130,6 +130,10 @@ class MatchController extends Controller
 
         try {
             $match = Matchs::findOrFail($request->id);
+            \App\Models\MatchCallup::where('match_id', $match->id)->delete();
+            \App\Models\AdministrativeMatchReport::where('match_id', $match->id)->delete();
+            \App\Models\MatchBonuse::where('match_id', $match->id)->delete();
+            \App\Models\TravelItinerary::where('match_id', $match->id)->delete();
             $match->delete();
 
             return response()->json([
@@ -145,5 +149,8 @@ class MatchController extends Controller
         }
     }
 }
+
+
+
 
 
