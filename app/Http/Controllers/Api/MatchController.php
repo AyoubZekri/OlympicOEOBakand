@@ -13,7 +13,7 @@ class MatchController extends Controller
     public function index()
     {
         try {
-            $matches = Matchs::with(['coachId', 'adminId', 'team'])->orderBy('created_at', 'desc')->get();
+            $matches = Matchs::with(['coachId', 'adminId', 'team', 'opponentClub'])->orderBy('created_at', 'desc')->get();
             return response()->json([
                 'status' => 'success',
                 'data' => $matches
@@ -31,8 +31,9 @@ class MatchController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'competition' => 'required|string|max:255',
-            'opponent' => 'required|string|max:255',
-            'match_title' => 'required|string|max:255',
+            'opponent' => 'nullable|string|max:255',
+            'opponent_club_id' => 'nullable|exists:clubs,id',
+            'match_title' => 'nullable|string|max:255',
             'match_date' => 'required|date',
             'location' => 'required|string|max:255',
             'team_score' => 'nullable|integer',
@@ -58,7 +59,7 @@ class MatchController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Match created successfully',
-                'data' => $match->load(['coachId', 'adminId', 'team'])
+                'data' => $match->load(['coachId', 'adminId', 'team', 'opponentClub'])
             ], 201);
         } catch (Exception $e) {
             return response()->json([
@@ -74,8 +75,9 @@ class MatchController extends Controller
         $validator = Validator::make($request->all(), [
             'id' => 'required|exists:matches,id',
             'competition' => 'required|string|max:255',
-            'opponent' => 'required|string|max:255',
-            'match_title' => 'required|string|max:255',
+            'opponent' => 'nullable|string|max:255',
+            'opponent_club_id' => 'nullable|exists:clubs,id',
+            'match_title' => 'nullable|string|max:255',
             'match_date' => 'required|date',
             'location' => 'required|string|max:255',
             'team_score' => 'nullable|integer',
@@ -102,7 +104,7 @@ class MatchController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Match updated successfully',
-                'data' => $match->load(['coachId', 'adminId', 'team'])
+                'data' => $match->load(['coachId', 'adminId', 'team', 'opponentClub'])
             ]);
         } catch (Exception $e) {
             return response()->json([
@@ -143,4 +145,5 @@ class MatchController extends Controller
         }
     }
 }
+
 

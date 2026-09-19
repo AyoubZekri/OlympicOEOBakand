@@ -26,4 +26,10 @@ class Matchs extends Model
     {
         return $this->belongsTo(Team::class, 'team_id');
     }
+
+    public function opponentClub()
+    {
+        return $this->belongsTo(Club::class, 'opponent_club_id');
+    }
 }
+
