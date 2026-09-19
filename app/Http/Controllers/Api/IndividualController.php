@@ -26,7 +26,12 @@ class IndividualController extends Controller
             'phone' => 'nullable|string|max:255',
             'place_of_birth' => 'nullable|string|max:255',
             'birth_date' => 'nullable|date',
-            'Shirt_number' => 'nullable|integer',
+                        'Shirt_number' => 'nullable|integer',
+            'email' => 'nullable|email|max:255',
+            'position' => 'nullable|string|max:255',
+            'preferred_foot' => 'nullable|string|in:íãíä,íÓÇÑ,ßáÊÇåãÇ',
+            'emergency_contact_name' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:255',
             'status' => 'nullable|string|in:active,inactive,suspended',
             'team_id' => 'nullable|exists:teams,id',
             'added_by' => 'nullable|exists:users,id',
@@ -68,7 +73,12 @@ class IndividualController extends Controller
             'phone' => 'nullable|string|max:255',
             'place_of_birth' => 'nullable|string|max:255',
             'birth_date' => 'nullable|date',
-            'Shirt_number' => 'nullable|integer',
+                        'Shirt_number' => 'nullable|integer',
+            'email' => 'nullable|email|max:255',
+            'position' => 'nullable|string|max:255',
+            'preferred_foot' => 'nullable|string|in:íãíä,íÓÇÑ,ßáÊÇåãÇ',
+            'emergency_contact_name' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:255',
             'status' => 'nullable|string|in:active,inactive,suspended',
             'team_id' => 'nullable|exists:teams,id',
             // Typically added_by shouldn't change, but we can allow it if needed.
@@ -106,3 +116,5 @@ class IndividualController extends Controller
         return response()->json(['message' => 'Individual internal system printed successfully', 'individual' => $individual]);
     }
 }
+
+

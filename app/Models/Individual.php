@@ -21,6 +21,11 @@ class Individual extends Model
         'added_by',
         'photo',
         'user_id',
+        'email',
+        'position',
+        'preferred_foot',
+        'emergency_contact_name',
+        'emergency_contact_phone',
     ];
 
     public function team()
@@ -38,3 +43,4 @@ class Individual extends Model
         return $this->belongsTo(User::class);
     }
 }
+
