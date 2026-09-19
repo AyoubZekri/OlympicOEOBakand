@@ -171,9 +171,3 @@ Route::get('/clubs', [ClubController::class, 'index']);
 Route::post('/clubs/create', [ClubController::class, 'store']);
 Route::post('/clubs/update/{id}', [ClubController::class, 'update']);
 Route::delete('/clubs/delete/{id}', [ClubController::class, 'destroy']);
-
-use App\Http\Controllers\ClubController;
-Route::get('/clubs', [ClubController::class, 'index']);
-Route::post('/clubs/create', [ClubController::class, 'store']);
-Route::post('/clubs/update/{id}', [ClubController::class, 'update']);
-Route::delete('/clubs/delete/{id}', [ClubController::class, 'destroy']);
