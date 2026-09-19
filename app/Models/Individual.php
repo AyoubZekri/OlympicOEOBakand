@@ -26,6 +26,10 @@ class Individual extends Model
         'preferred_foot',
         'emergency_contact_name',
         'emergency_contact_phone',
+        'national_id_document',
+        'medical_certificate',
+        'insurance_document',
+        'bank_account_number',
     ];
 
     public function team()
@@ -43,4 +47,5 @@ class Individual extends Model
         return $this->belongsTo(User::class);
     }
 }
+
 

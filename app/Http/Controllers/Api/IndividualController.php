@@ -31,54 +31,14 @@ class IndividualController extends Controller
             'position' => 'nullable|string|max:255',
             'preferred_foot' => 'nullable|string|in:íãíä,íÓÇÑ,ßáÊÇåãÇ',
             'emergency_contact_name' => 'nullable|string|max:255',
-            'emergency_contact_phone' => 'nullable|string|max:255',
-            'status' => 'nullable|string|in:active,inactive,suspended',
-            'team_id' => 'nullable|exists:teams,id',
-            'added_by' => 'nullable|exists:users,id',
-            'photo' => 'nullable|file|mimes:jpeg,png,jpg,gif,svg,webp,heic,heif|max:5120',
-        ]);
-
-        // If you want to automatically set added_by to the authenticated user later:
-        // if ($request->user()) {
-        //     $validated['added_by'] = $request->user()->id;
-        // }
-
-        if ($request->hasFile('photo')) {
-            $validated['photo'] = $request->file('photo')->store('photos', 'public');
-        }
-
-        $individual = Individual::create($validated);
-
-        return response()->json(['message' => 'Individual created successfully', 'individual' => $individual], 201);
-    }
-
-    public function show(Request $request)
-    {
-        $request->validate(['id' => 'required|exists:individuals,id']);
-        
-        $individual = Individual::with(['addedBy', 'team'])->findOrFail($request->id);
-        return response()->json($individual);
-    }
-
-    public function update(Request $request)
-    {
-        $request->validate(['id' => 'required|exists:individuals,id']);
-        $individual = Individual::findOrFail($request->id);
-
-        $validated = $request->validate([
-            'type' => 'sometimes|string',
-            'first_name' => 'sometimes|string|max:255',
-            'last_name' => 'sometimes|string|max:255',
-            'national_id' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:255',
-            'place_of_birth' => 'nullable|string|max:255',
-            'birth_date' => 'nullable|date',
-                        'Shirt_number' => 'nullable|integer',
-            'email' => 'nullable|email|max:255',
-            'position' => 'nullable|string|max:255',
-            'preferred_foot' => 'nullable|string|in:íãíä,íÓÇÑ,ßáÊÇåãÇ',
-            'emergency_contact_name' => 'nullable|string|max:255',
-            'emergency_contact_phone' => 'nullable|string|max:255',
+                        'emergency_contact_phone' => 'nullable|string|max:255',
+            'bank_account_number' => 'nullable|string|max:255',
+            'national_id_document' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            'medical_certificate' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            'insurance_document' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            
+            
+            
             'status' => 'nullable|string|in:active,inactive,suspended',
             'team_id' => 'nullable|exists:teams,id',
             // Typically added_by shouldn't change, but we can allow it if needed.
@@ -88,6 +48,18 @@ class IndividualController extends Controller
 
         if ($request->hasFile('photo')) {
             $validated['photo'] = $request->file('photo')->store('photos', 'public');
+        }
+
+        if ($request->hasFile('national_id_document')) {
+            $validated['national_id_document'] = $request->file('national_id_document')->store('documents', 'public');
+        }
+
+        if ($request->hasFile('medical_certificate')) {
+            $validated['medical_certificate'] = $request->file('medical_certificate')->store('documents', 'public');
+        }
+
+        if ($request->hasFile('insurance_document')) {
+            $validated['insurance_document'] = $request->file('insurance_document')->store('documents', 'public');
         }
 
         $individual->update($validated);
@@ -116,5 +88,6 @@ class IndividualController extends Controller
         return response()->json(['message' => 'Individual internal system printed successfully', 'individual' => $individual]);
     }
 }
+
 
 
