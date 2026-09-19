@@ -10,7 +10,7 @@ class DecisionController extends Controller
 {
     public function index()
     {
-        $decisions = Decision::orderBy('created_at', 'desc')->get();
+        $decisions = Decision::orderBy('id', 'desc')->get();
         $decisions->map(function ($decision) {
             $decision->text = $decision->decision_text;
             return $decision;
