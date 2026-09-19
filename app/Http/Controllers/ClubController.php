@@ -16,7 +16,7 @@ class ClubController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'symbol' => 'nullable|string|max:255',
-            'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
         ]);
 
         $data = $request->except('logo');
