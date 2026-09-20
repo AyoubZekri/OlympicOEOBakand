@@ -115,6 +115,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/disciplinary/create', [\App\Http\Controllers\Api\DisciplinaryController::class, 'store']);
     Route::post('/disciplinary/update', [\App\Http\Controllers\Api\DisciplinaryController::class, 'update']);
     Route::post('/disciplinary/delete', [\App\Http\Controllers\Api\DisciplinaryController::class, 'destroy']);
+    Route::post('/disciplinary/{id}/upload-document', [\App\Http\Controllers\Api\DisciplinaryController::class, 'uploadDocument']);
 
     // Correspondences Routes
     Route::get('/correspondences', [\App\Http\Controllers\Api\CorrespondenceController::class, 'index']);

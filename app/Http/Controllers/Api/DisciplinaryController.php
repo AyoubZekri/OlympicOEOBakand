@@ -30,6 +30,7 @@ class DisciplinaryController extends Controller
                 'status' => $case->case_status ?? 'مفتوح',
                 'is_acknowledged' => $action ? (bool) $action->is_acknowledged : false,
                 'acknowledged_at' => $action ? $action->acknowledged_at : null,
+                'signed_document' => $action ? $action->signed_document : null,
                 'actionId' => $action ? (string) $action->id : null,
                 'incidentLocation' => $case->incident_location ?? '',
                 'violatedRule' => $case->violated_rule ?? '',
@@ -234,6 +235,40 @@ class DisciplinaryController extends Controller
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }
+
+    public function uploadDocument(Request $request, $id)
+    {
+        $request->validate([
+            'document' => 'required|file|mimes:jpeg,png,jpg,pdf|max:5120',
+        ]);
+
+        $case = DisciplinaryCase::find($id);
+
+        if (!$case) {
+            return response()->json(['status' => 'error', 'message' => 'الإجراء غير موجود'], 404);
+        }
+
+        if ($request->hasFile('document')) {
+            $file = $request->file('document');
+            $extension = $file->getClientOriginalExtension();
+            $filename = 'signed_doc_' . time() . '.' . $extension;
+            
+            $file->move(public_path('uploads/disciplinary'), $filename);
+            $path = asset('uploads/disciplinary/' . $filename);
+            
+            $action = DisciplinaryAction::where('case_id', $case->id)->orderBy('id', 'desc')->first();
+            if ($action) {
+                $action->signed_document = $path;
+                $action->save();
+            }
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'تم رفع الوثيقة بنجاح',
+                'path' => $path
+            ]);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'لم يتم إرسال أي ملف'], 400);
+    }
 }
-
-
