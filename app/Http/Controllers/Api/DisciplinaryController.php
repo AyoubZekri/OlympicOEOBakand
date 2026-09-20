@@ -236,39 +236,50 @@ class DisciplinaryController extends Controller
         }
     }
 
-    public function uploadDocument(Request $request, $id)
+    
+    public function uploadDocument(\Illuminate\Http\Request $request, $id)
     {
-        $request->validate([
-            'document' => 'required|file|mimes:jpeg,png,jpg,pdf|max:5120',
-        ]);
-
-        $case = DisciplinaryCase::find($id);
-
-        if (!$case) {
-            return response()->json(['status' => 'error', 'message' => 'الإجراء غير موجود'], 404);
-        }
-
-        if ($request->hasFile('document')) {
-            $file = $request->file('document');
-            $extension = $file->getClientOriginalExtension();
-            $filename = 'signed_doc_' . time() . '.' . $extension;
-            
-            $file->move(public_path('uploads/disciplinary'), $filename);
-            $path = asset('uploads/disciplinary/' . $filename);
-            
-            $action = DisciplinaryAction::where('case_id', $case->id)->orderBy('id', 'desc')->first();
-            if ($action) {
-                $action->signed_document = $path;
-                $action->save();
-            }
-            
-            return response()->json([
-                'status' => 'success',
-                'message' => 'تم رفع الوثيقة بنجاح',
-                'path' => $path
+        try {
+            $request->validate([
+                'document' => 'required|file|mimes:jpeg,png,jpg,pdf|max:5120',
             ]);
-        }
 
-        return response()->json(['status' => 'error', 'message' => 'لم يتم إرسال أي ملف'], 400);
+            $case = \App\Models\DisciplinaryCase::find($id);
+
+            if (!$case) {
+                return response()->json(['status' => 'error', 'message' => 'الإجراء غير موجود'], 404);
+            }
+
+            if ($request->hasFile('document')) {
+                $file = $request->file('document');
+                $extension = $file->getClientOriginalExtension();
+                $filename = 'signed_doc_' . time() . '.' . $extension;
+                
+                // Create directory if it doesn't exist
+                $destinationPath = public_path('uploads/disciplinary');
+                if (!file_exists($destinationPath)) {
+                    mkdir($destinationPath, 0755, true);
+                }
+
+                $file->move($destinationPath, $filename);
+                $path = asset('uploads/disciplinary/' . $filename);
+                
+                $action = \App\Models\DisciplinaryAction::where('case_id', $case->id)->orderBy('id', 'desc')->first();
+                if ($action) {
+                    $action->signed_document = $path;
+                    $action->save();
+                }
+                
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'تم رفع الوثيقة بنجاح',
+                    'path' => $path
+                ]);
+            }
+
+            return response()->json(['status' => 'error', 'message' => 'لم يتم إرسال أي ملف'], 400);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
     }
 }
