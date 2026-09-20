@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('disciplinary_actions', function (Blueprint $table) {
-            //
+            $table->string('signed_document')->nullable()->after('acknowledged_at');
         });
     }
 
@@ -22,7 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('disciplinary_actions', function (Blueprint $table) {
-            //
+            $table->dropColumn('signed_document');
         });
     }
 };
