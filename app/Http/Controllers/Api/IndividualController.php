@@ -26,22 +26,71 @@ class IndividualController extends Controller
             'phone' => 'nullable|string|max:255',
             'place_of_birth' => 'nullable|string|max:255',
             'birth_date' => 'nullable|date',
-                        'Shirt_number' => 'nullable|integer',
+            'Shirt_number' => 'nullable|integer',
             'email' => 'nullable|email|max:255',
             'position' => 'nullable|string|max:255',
-            'preferred_foot' => 'nullable|string|in:����,����,�������',
+            'preferred_foot' => 'nullable|string|in:يمين,يسار,كلتاهما',
             'emergency_contact_name' => 'nullable|string|max:255',
-                        'emergency_contact_phone' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:255',
             'bank_account_number' => 'nullable|string|max:255',
             'national_id_document' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
             'medical_certificate' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
             'insurance_document' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
-            
-            
-            
             'status' => 'nullable|string|in:active,inactive,suspended',
             'team_id' => 'nullable|exists:teams,id',
-            // Typically added_by shouldn't change, but we can allow it if needed.
+            'added_by' => 'nullable|exists:users,id',
+            'photo' => 'nullable|file|mimes:jpeg,png,jpg,gif,svg,webp,heic,heif|max:5120',
+        ]);
+
+        if ($request->hasFile('photo')) {
+            $validated['photo'] = $request->file('photo')->store('photos', 'public');
+        }
+
+        if ($request->hasFile('national_id_document')) {
+            $validated['national_id_document'] = $request->file('national_id_document')->store('documents', 'public');
+        }
+
+        if ($request->hasFile('medical_certificate')) {
+            $validated['medical_certificate'] = $request->file('medical_certificate')->store('documents', 'public');
+        }
+
+        if ($request->hasFile('insurance_document')) {
+            $validated['insurance_document'] = $request->file('insurance_document')->store('documents', 'public');
+        }
+
+        $individual = Individual::create($validated);
+
+        return response()->json(['message' => 'Individual created successfully', 'individual' => $individual], 201);
+    }
+
+    public function update(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|exists:individuals,id'
+        ]);
+
+        $individual = Individual::findOrFail($request->id);
+
+        $validated = $request->validate([
+            'type' => 'nullable|string',
+            'first_name' => 'nullable|string|max:255',
+            'last_name' => 'nullable|string|max:255',
+            'national_id' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'place_of_birth' => 'nullable|string|max:255',
+            'birth_date' => 'nullable|date',
+            'Shirt_number' => 'nullable|integer',
+            'email' => 'nullable|email|max:255',
+            'position' => 'nullable|string|max:255',
+            'preferred_foot' => 'nullable|string|in:يمين,يسار,كلتاهما',
+            'emergency_contact_name' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:255',
+            'bank_account_number' => 'nullable|string|max:255',
+            'national_id_document' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            'medical_certificate' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            'insurance_document' => 'nullable|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            'status' => 'nullable|string|in:active,inactive,suspended',
+            'team_id' => 'nullable|exists:teams,id',
             'added_by' => 'nullable|exists:users,id',
             'photo' => 'nullable|file|mimes:jpeg,png,jpg,gif,svg,webp,heic,heif|max:5120',
         ]);
@@ -88,6 +137,3 @@ class IndividualController extends Controller
         return response()->json(['message' => 'Individual internal system printed successfully', 'individual' => $individual]);
     }
 }
-
-
-
