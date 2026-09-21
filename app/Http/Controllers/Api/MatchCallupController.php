@@ -1,17 +1,15 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\MatchCallup;
+use App\Models\Matchs;
 use Illuminate\Support\Facades\DB;
 
 class MatchCallupController extends Controller
 {
-    /**
-     * Display a listing of callups for a specific match.
-     */
     public function index($match_id)
     {
         try {
@@ -32,30 +30,23 @@ class MatchCallupController extends Controller
         }
     }
 
-    /**
-     * Store or update a newly created callup in storage.
-     * We will accept an array of callups to sync.
-     */
     public function store(Request $request)
     {
         $request->validate([
             'match_id' => 'required|exists:matches,id',
-            'players' => 'required|array', // array of {player_id, notes}
+            'players' => 'required|array',
         ]);
 
         $match_id = $request->match_id;
 
         DB::beginTransaction();
         try {
-            // Get all current callups to remove the ones not in the request
             $currentPlayerIds = collect($request->players)->pluck('player_id')->toArray();
             
-            // Delete those not in the new list
             MatchCallup::where('match_id', $match_id)
                 ->whereNotIn('player_id', $currentPlayerIds)
                 ->delete();
 
-            // Update or Create the ones in the list
             foreach ($request->players as $player) {
                 MatchCallup::updateOrCreate(
                     [
@@ -82,9 +73,57 @@ class MatchCallupController extends Controller
         }
     }
 
-    /**
-     * Remove a single callup.
-     */
+    public function saveLineup(Request $request)
+    {
+        $request->validate([
+            'match_id' => 'required|exists:matches,id',
+            'formation' => 'nullable|string',
+            'players' => 'required|array',
+        ]);
+
+        $match_id = $request->match_id;
+
+        DB::beginTransaction();
+        try {
+            // Update formation on match
+            $match = Matchs::find($match_id);
+            if ($match) {
+                $match->formation = $request->formation;
+                $match->save();
+            }
+
+            // Reset all players in this match to not starters
+            MatchCallup::where('match_id', $match_id)->update([
+                'is_starter' => false,
+                'position_x' => null,
+                'position_y' => null
+            ]);
+
+            // Set the new starters
+            foreach ($request->players as $player) {
+                MatchCallup::where('match_id', $match_id)
+                    ->where('player_id', $player['player_id'])
+                    ->update([
+                        'is_starter' => $player['is_starter'] ?? false,
+                        'position_x' => $player['position_x'] ?? null,
+                        'position_y' => $player['position_y'] ?? null
+                    ]);
+            }
+
+            DB::commit();
+            return response()->json([
+                'status' => 'success',
+                'message' => 'تم حفظ التشكيلة بنجاح'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'حدث خطأ أثناء حفظ التشكيلة: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function destroy(Request $request)
     {
         $request->validate([
