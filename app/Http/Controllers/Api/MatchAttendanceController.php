@@ -17,52 +17,52 @@ class MatchAttendanceController extends Controller
      * Checks app_absences for existing records (غائب/متأخر).
      * If no record found → player is considered حاضر by default.
      */
-    public function getMatchAttendance()
+    public function getMatchAttendance($id)
     {
-        \ = Matchs::with('team')->findOrFail(\);
+        $match = Matchs::with('team')->findOrFail($id);
 
         // Get called up players
-        \ = MatchCallup::with('playerId')
-            ->where('match_id', \)
+        $callups = MatchCallup::with('playerId')
+            ->where('match_id', $id)
             ->get();
 
-        if (\->isNotEmpty()) {
-            \ = \->map(function (\) {
-                return \->playerId;
+        if ($callups->isNotEmpty()) {
+            $players = $callups->map(function ($callup) {
+                return $callup->playerId;
             })->filter()->values();
         } else {
             // Fallback to all team players if no callups exist
-            \ = Individual::where('type', 'player')
-                ->where('team_id', \->team_id)
+            $players = Individual::where('type', 'player')
+                ->where('team_id', $match->team_id)
                 ->orderBy('first_name')
                 ->get();
         }
 
         // Get existing absence records for this match from app_absences
-        \ = AppAbsence::where('match_id', \)
+        $absences = AppAbsence::where('match_id', $id)
             ->get()
             ->keyBy('player_id');
 
-        \ = \->map(function (\) use (\) {
-            \ = \->get(\->id);
+        $formattedPlayers = $players->map(function ($player) use ($absences) {
+            $absence = $absences->get($player->id);
             return [
-                'id'           => \->id,
-                'name'         => \->first_name . ' ' . \->last_name,
-                'shirt_number' => \->Shirt_number,
-                'photo'        => \->photo,
-                'status'       => \ ? \->absence_type : 'حاضر',
-                'note'         => \ ? (\->reason ?? '') : '',
+                'id'           => $player->id,
+                'name'         => $player->first_name . ' ' . $player->last_name,
+                'shirt_number' => $player->Shirt_number,
+                'photo'        => $player->photo,
+                'status'       => $absence ? $absence->absence_type : 'حاضر',
+                'note'         => $absence ? ($absence->reason ?? '') : '',
             ];
         });
 
         return response()->json([
-            'match_id'     => \->id,
-            'match_date'   => \->match_date,
-            'location'     => \->location,
-            'start_time'   => \->gathering_time ?? '00:00',
-            'end_time'     => \->start_time ?? '00:00',
-            'team_name'    => \->team ? \->team->name : 'غير محدد',
-            'players'      => \,
+            'match_id'     => $match->id,
+            'match_date'   => $match->match_date,
+            'location'     => $match->location,
+            'start_time'   => $match->gathering_time ?? '00:00',
+            'end_time'     => $match->start_time ?? '00:00',
+            'team_name'    => $match->team ? $match->team->name : 'غير محدد',
+            'players'      => $formattedPlayers,
         ]);
     }
 
@@ -71,9 +71,9 @@ class MatchAttendanceController extends Controller
      * - حاضر  → delete any existing absence record for this match/player
      * - غائب/متأخر → upsert into app_absences
      */
-    public function saveAttendance(Request \)
+    public function saveAttendance(Request $request)
     {
-        \ = \->validate([
+        $validated = $request->validate([
             'match_id'            => 'required|exists:matches,id',
             'records'             => 'required|array',
             'records.*.player_id' => 'required|exists:individuals,id',
@@ -82,44 +82,44 @@ class MatchAttendanceController extends Controller
         ]);
 
         try {
-            \ = Matchs::findOrFail(\['match_id']);
+            $match = Matchs::findOrFail($validated['match_id']);
 
-            foreach (\['records'] as \) {
-                if (\['status'] === 'حاضر') {
+            foreach ($validated['records'] as $record) {
+                if ($record['status'] === 'حاضر') {
                     // Player present → remove any absence record
-                    AppAbsence::where('match_id', \['match_id'])
-                        ->where('player_id', \['player_id'])
+                    AppAbsence::where('match_id', $validated['match_id'])
+                        ->where('player_id', $record['player_id'])
                         ->delete();
                 } else {
                     // Player absent/late → save to app_absences
-                    \ = [
-                        'absence_type'         => \['status'],
+                    $data = [
+                        'absence_type'         => $record['status'],
                         'event_category'       => 'مباراة',
-                        'event_date'           => \->match_date,
+                        'event_date'           => $match->match_date,
                         'record_source'        => 'مباراة',
-                        'reason'               => \['note'] ?? null,
-                        'is_justified'         => \['status'] === 'غائب مبرر',
-                        'justification_status' => \['status'] === 'غائب مبرر' ? 'accepted' : 'none',
+                        'reason'               => $record['note'] ?? null,
+                        'is_justified'         => $record['status'] === 'غائب مبرر',
+                        'justification_status' => $record['status'] === 'غائب مبرر' ? 'accepted' : 'none',
                     ];
 
-                    \ = AppAbsence::where('match_id', \['match_id'])
-                        ->where('player_id', \['player_id'])
+                    $existing = AppAbsence::where('match_id', $validated['match_id'])
+                        ->where('player_id', $record['player_id'])
                         ->first();
 
-                    if (\) {
-                        \->update(\);
+                    if ($existing) {
+                        $existing->update($data);
                     } else {
-                        AppAbsence::create(array_merge(\, [
-                            'match_id'  => \['match_id'],
-                            'player_id' => \['player_id'],
+                        AppAbsence::create(array_merge($data, [
+                            'match_id'  => $validated['match_id'],
+                            'player_id' => $record['player_id'],
                         ]));
                     }
                 }
             }
 
             return response()->json(['message' => 'تم حفظ كشف الحضور بنجاح'], 200);
-        } catch (\Exception \) {
-            return response()->json(['error' => \->getMessage()], 400);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 }
