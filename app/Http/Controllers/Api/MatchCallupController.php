@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -62,13 +62,13 @@ class MatchCallupController extends Controller
             DB::commit();
             return response()->json([
                 'status' => 'success',
-                'message' => 'تم حفظ الاستدعاءات بنجاح'
+                'message' => 'طھظ… ط­ظپط¸ ط§ظ„ط§ط³طھط¯ط¹ط§ط،ط§طھ ط¨ظ†ط¬ط§ط­'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'status' => 'error',
-                'message' => 'حدث خطأ أثناء حفظ الاستدعاءات: ' . $e->getMessage()
+                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ظپط¸ ط§ظ„ط§ط³طھط¯ط¹ط§ط،ط§طھ: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -113,13 +113,13 @@ class MatchCallupController extends Controller
             DB::commit();
             return response()->json([
                 'status' => 'success',
-                'message' => 'تم حفظ التشكيلة بنجاح'
+                'message' => 'طھظ… ط­ظپط¸ ط§ظ„طھط´ظƒظٹظ„ط© ط¨ظ†ط¬ط§ط­'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'status' => 'error',
-                'message' => 'حدث خطأ أثناء حفظ التشكيلة: ' . $e->getMessage()
+                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ظپط¸ ط§ظ„طھط´ظƒظٹظ„ط©: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -134,12 +134,12 @@ class MatchCallupController extends Controller
             MatchCallup::destroy($request->id);
             return response()->json([
                 'status' => 'success',
-                'message' => 'تم حذف الاستدعاء بنجاح'
+                'message' => 'طھظ… ط­ط°ظپ ط§ظ„ط§ط³طھط¯ط¹ط§ط، ط¨ظ†ط¬ط§ط­'
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'حدث خطأ أثناء حذف الاستدعاء: ' . $e->getMessage()
+                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ط°ظپ ط§ظ„ط§ط³طھط¯ط¹ط§ط،: ' . $e->getMessage()
             ], 500);
         }
     }
