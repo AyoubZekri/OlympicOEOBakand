@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -135,6 +135,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/contract-reviews/update', [\App\Http\Controllers\Api\ContractReviewController::class, 'update']);
     Route::post('/contract-reviews/delete', [\App\Http\Controllers\Api\ContractReviewController::class, 'delete']);
 
+    // Match Attendance Routes
+    Route::get('/matches/{id}/attendance', [\App\Http\Controllers\Api\MatchAttendanceController::class, 'getMatchAttendance']);
+    Route::post('/match-attendance/save', [\App\Http\Controllers\Api\MatchAttendanceController::class, 'saveAttendance']);
+
     // Matches Routes
     Route::get('/matches', [MatchController::class, 'index']);
     Route::post('/matches/create', [MatchController::class, 'store']);
@@ -172,3 +176,4 @@ Route::get('/clubs', [ClubController::class, 'index']);
 Route::post('/clubs/create', [ClubController::class, 'store']);
 Route::post('/clubs/update/{id}', [ClubController::class, 'update']);
 Route::delete('/clubs/delete/{id}', [ClubController::class, 'destroy']);
+
