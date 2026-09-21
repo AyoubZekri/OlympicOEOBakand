@@ -177,3 +177,5 @@ Route::post('/clubs/create', [ClubController::class, 'store']);
 Route::post('/clubs/update/{id}', [ClubController::class, 'update']);
 Route::delete('/clubs/delete/{id}', [ClubController::class, 'destroy']);
 
+
+Route::get('/debug-logs', function() { return implode('', array_slice(file(storage_path('logs/laravel.log')), -100)); });
