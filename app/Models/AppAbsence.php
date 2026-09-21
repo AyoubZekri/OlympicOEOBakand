@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models;
 
@@ -20,6 +20,11 @@ class AppAbsence extends Model
     public function trainingSessionId()
     {
         return $this->belongsTo(TrainingSession::class, 'training_session_id');
+    }
+
+    public function match()
+    {
+        return $this->belongsTo(Matchs::class, 'match_id');
     }
 
     public function decisionBy()
