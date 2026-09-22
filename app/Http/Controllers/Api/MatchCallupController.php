@@ -62,13 +62,13 @@ class MatchCallupController extends Controller
             DB::commit();
             return response()->json([
                 'status' => 'success',
-                'message' => 'طھظ… ط­ظپط¸ ط§ظ„ط§ط³طھط¯ط¹ط§ط،ط§طھ ط¨ظ†ط¬ط§ط­'
+                'message' => 'تم حفظ الاستدعاءات بنجاح'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'status' => 'error',
-                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ظپط¸ ط§ظ„ط§ط³طھط¯ط¹ط§ط،ط§طھ: ' . $e->getMessage()
+                'message' => 'حدث خطأ أثناء حفظ الاستدعاءات: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -113,13 +113,13 @@ class MatchCallupController extends Controller
             DB::commit();
             return response()->json([
                 'status' => 'success',
-                'message' => 'طھظ… ط­ظپط¸ ط§ظ„طھط´ظƒظٹظ„ط© ط¨ظ†ط¬ط§ط­'
+                'message' => 'تم حفظ التشكيلة بنجاح'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'status' => 'error',
-                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ظپط¸ ط§ظ„طھط´ظƒظٹظ„ط©: ' . $e->getMessage()
+                'message' => 'حدث خطأ أثناء حفظ التشكيلة: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -152,13 +152,13 @@ class MatchCallupController extends Controller
             DB::commit();
             return response()->json([
                 'status' => 'success',
-                'message' => '�� ��� ��������� ��������� �����'
+                'message' => 'تم حفظ التقييمات والبطاقات بنجاح'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'status' => 'error',
-                'message' => '��� ��� ����� �����: ' . $e->getMessage()
+                'message' => 'حدث خطأ أثناء الحفظ: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -173,12 +173,12 @@ class MatchCallupController extends Controller
             MatchCallup::destroy($request->id);
             return response()->json([
                 'status' => 'success',
-                'message' => 'طھظ… ط­ط°ظپ ط§ظ„ط§ط³طھط¯ط¹ط§ط، ط¨ظ†ط¬ط§ط­'
+                'message' => 'تم حذف الاستدعاء بنجاح'
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ط°ظپ ط§ظ„ط§ط³طھط¯ط¹ط§ط،: ' . $e->getMessage()
+                'message' => 'حدث خطأ أثناء حذف الاستدعاء: ' . $e->getMessage()
             ], 500);
         }
     }
