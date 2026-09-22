@@ -144,6 +144,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/matches/create', [MatchController::class, 'store']);
     Route::post('/matches/update', [MatchController::class, 'update']);
     Route::post('/matches/delete', [MatchController::class, 'destroy']);
+    Route::get('/matches/{id}/events', [MatchController::class, 'getMatchEvents']);
 
     // Match Callups Routes
     Route::get('/matches/callups/{match_id}', [MatchCallupController::class, 'index']);

@@ -21,4 +21,14 @@ class MatchCallup extends Model
     {
         return $this->belongsTo(Individual::class, 'player_id');
     }
+
+    public function individual()
+    {
+        return $this->belongsTo(Individual::class, 'player_id');
+    }
+
+    public function replacedBy()
+    {
+        return $this->belongsTo(Individual::class, 'replaced_by_id');
+    }
 }
