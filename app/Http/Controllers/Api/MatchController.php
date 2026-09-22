@@ -205,6 +205,40 @@ class MatchController extends Controller
             ], 500);
         }
     }
+
+    public function getMatchEvents($id)
+    {
+        try {
+            $match = Matchs::with(['coachId', 'adminId', 'team', 'opponentClub'])->findOrFail($id);
+            
+            $goals = DB::table('match_goals')
+                ->join('individuals as scorer', 'match_goals.scorer_id', '=', 'scorer.id')
+                ->leftJoin('individuals as assist', 'match_goals.assist_id', '=', 'assist.id')
+                ->where('match_goals.match_id', $id)
+                ->orderBy('match_goals.minute')
+                ->select('match_goals.*', 'scorer.first_name as scorer_first_name', 'scorer.last_name as scorer_last_name', 'assist.first_name as assist_first_name', 'assist.last_name as assist_last_name')
+                ->get();
+            
+            $callups = \App\Models\MatchCallup::with(['individual', 'replacedBy'])
+                ->where('match_id', $id)
+                ->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'match' => $match,
+                    'goals' => $goals,
+                    'callups' => $callups
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch match events',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
 
 
