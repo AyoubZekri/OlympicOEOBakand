@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Matchs;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 use Exception;
 
 class MatchController extends Controller
@@ -97,16 +98,72 @@ class MatchController extends Controller
             ], 422);
         }
 
+        DB::beginTransaction();
         try {
             $match = Matchs::findOrFail($request->id);
-            $match->update($request->all());
+            
+            $updateData = $request->except(['goals', 'substitutions']);
+            $match->update($updateData);
 
+            // Process Goals
+            if ($request->has('goals') && is_array($request->goals)) {
+                DB::table('match_goals')->where('match_id', $match->id)->delete();
+                $goalsData = [];
+                foreach ($request->goals as $goal) {
+                    if (!empty($goal['scorer_id']) && !empty($goal['minute'])) {
+                        $goalsData[] = [
+                            'match_id' => $match->id,
+                            'scorer_id' => $goal['scorer_id'],
+                            'assist_id' => !empty($goal['assist_id']) ? $goal['assist_id'] : null,
+                            'minute' => $goal['minute'],
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
+                    }
+                }
+                if (!empty($goalsData)) {
+                    DB::table('match_goals')->insert($goalsData);
+                }
+            }
+
+            // Process Substitutions
+            if ($request->has('substitutions') && is_array($request->substitutions)) {
+                foreach ($request->substitutions as $sub) {
+                    if (!empty($sub['player_out_id']) && !empty($sub['player_in_id'])) {
+                        // Because some records might use `individual_id` depending on the migration, we use the standard from frontend which is player_id
+                        // But wait! What is the column name in `match_callups`? It could be `individual_id`. I'll use a callback to match either.
+                        $outQuery = DB::table('match_callups')->where('match_id', $match->id);
+                        if (\Schema::hasColumn('match_callups', 'player_id')) {
+                            $outQuery->where('player_id', $sub['player_out_id']);
+                        } else {
+                            $outQuery->where('individual_id', $sub['player_out_id']);
+                        }
+                        $outQuery->update([
+                            'subbed_out_minute' => $sub['minute'],
+                            'replaced_by_id' => $sub['player_in_id']
+                        ]);
+
+                        $inQuery = DB::table('match_callups')->where('match_id', $match->id);
+                        if (\Schema::hasColumn('match_callups', 'player_id')) {
+                            $inQuery->where('player_id', $sub['player_in_id']);
+                        } else {
+                            $inQuery->where('individual_id', $sub['player_in_id']);
+                        }
+                        $inQuery->update([
+                            'subbed_in_minute' => $sub['minute']
+                        ]);
+                    }
+                }
+            }
+
+            DB::commit();
             return response()->json([
                 'status' => 'success',
                 'message' => 'Match updated successfully',
                 'data' => $match->load(['coachId', 'adminId', 'team', 'opponentClub'])
             ]);
         } catch (Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to update match',
