@@ -12,11 +12,17 @@ class MeetingController extends Controller
     {
         $meetings = Meeting::with('meetingAttendees.memberId')->orderBy('date', 'desc')->orderBy('time', 'desc')->get();
         $meetings->transform(function ($meeting) {
-            $attendees = $meeting->meetingAttendees->map(function ($ma) {
+            $originalAttendees = is_array($meeting->attendees) ? collect($meeting->attendees)->keyBy('id') : collect();
+            
+            $attendees = $meeting->meetingAttendees->map(function ($ma) use ($originalAttendees) {
+                $idStr = (string) $ma->member_id;
+                $orig = $originalAttendees->get($idStr) ?? $originalAttendees->get((int)$idStr);
+                
                 return [
-                    'id' => (string) $ma->member_id,
-                    'name' => $ma->memberId ? $ma->memberId->first_name . ' ' . $ma->memberId->last_name : 'ÚÖæ',
-                    'status' => 'confirmed'
+                    'id' => $idStr,
+                    'name' => $ma->memberId ? $ma->memberId->first_name . ' ' . $ma->memberId->last_name : ($orig['name'] ?? 'ÚÖæ'),
+                    'status' => $orig['status'] ?? 'pending',
+                    'reason' => $orig['reason'] ?? ''
                 ];
             });
             unset($meeting->meetingAttendees);
@@ -36,6 +42,15 @@ class MeetingController extends Controller
             'attendees' => 'nullable|array',
             'points' => 'nullable|array',
         ]);
+
+        // Set default status to pending for new attendees
+        if (isset($validated['attendees']) && is_array($validated['attendees'])) {
+            foreach ($validated['attendees'] as &$att) {
+                if (!isset($att['status'])) {
+                    $att['status'] = 'pending';
+                }
+            }
+        }
 
         $meeting = Meeting::create($validated);
         
@@ -60,11 +75,17 @@ class MeetingController extends Controller
     public function show(Meeting $meeting)
     {
         $meeting->load('meetingAttendees.memberId');
-        $attendees = $meeting->meetingAttendees->map(function ($ma) {
+        $originalAttendees = is_array($meeting->attendees) ? collect($meeting->attendees)->keyBy('id') : collect();
+        
+        $attendees = $meeting->meetingAttendees->map(function ($ma) use ($originalAttendees) {
+            $idStr = (string) $ma->member_id;
+            $orig = $originalAttendees->get($idStr) ?? $originalAttendees->get((int)$idStr);
+            
             return [
-                'id' => (string) $ma->member_id,
-                'name' => $ma->memberId ? $ma->memberId->first_name . ' ' . $ma->memberId->last_name : 'ÚÖæ',
-                'status' => 'confirmed'
+                'id' => $idStr,
+                'name' => $ma->memberId ? $ma->memberId->first_name . ' ' . $ma->memberId->last_name : ($orig['name'] ?? 'ÚÖæ'),
+                'status' => $orig['status'] ?? 'pending',
+                'reason' => $orig['reason'] ?? ''
             ];
         });
         unset($meeting->meetingAttendees);
@@ -113,5 +134,3 @@ class MeetingController extends Controller
         return response()->json(null, 204);
     }
 }
-
-
