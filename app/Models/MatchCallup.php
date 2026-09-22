@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models;
 
@@ -32,3 +32,4 @@ class MatchCallup extends Model
         return $this->belongsTo(Individual::class, 'replaced_by_id');
     }
 }
+

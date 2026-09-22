@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -62,13 +62,13 @@ class MatchCallupController extends Controller
             DB::commit();
             return response()->json([
                 'status' => 'success',
-                'message' => 'طھظ… ط­ظپط¸ ط§ظ„ط§ط³طھط¯ط¹ط§ط،ط§طھ ط¨ظ†ط¬ط§ط­'
+                'message' => 'ط·ع¾ط¸â€¦ ط·آ­ط¸ظ¾ط·آ¸ ط·آ§ط¸â€‍ط·آ§ط·آ³ط·ع¾ط·آ¯ط·آ¹ط·آ§ط·طŒط·آ§ط·ع¾ ط·آ¨ط¸â€ ط·آ¬ط·آ§ط·آ­'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'status' => 'error',
-                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ظپط¸ ط§ظ„ط§ط³طھط¯ط¹ط§ط،ط§طھ: ' . $e->getMessage()
+                'message' => 'ط·آ­ط·آ¯ط·آ« ط·آ®ط·آ·ط·آ£ ط·آ£ط·آ«ط¸â€ ط·آ§ط·طŒ ط·آ­ط¸ظ¾ط·آ¸ ط·آ§ط¸â€‍ط·آ§ط·آ³ط·ع¾ط·آ¯ط·آ¹ط·آ§ط·طŒط·آ§ط·ع¾: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -113,13 +113,48 @@ class MatchCallupController extends Controller
             DB::commit();
             return response()->json([
                 'status' => 'success',
-                'message' => 'طھظ… ط­ظپط¸ ط§ظ„طھط´ظƒظٹظ„ط© ط¨ظ†ط¬ط§ط­'
+                'message' => 'ط·ع¾ط¸â€¦ ط·آ­ط¸ظ¾ط·آ¸ ط·آ§ط¸â€‍ط·ع¾ط·آ´ط¸ئ’ط¸ظ¹ط¸â€‍ط·آ© ط·آ¨ط¸â€ ط·آ¬ط·آ§ط·آ­'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'status' => 'error',
-                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ظپط¸ ط§ظ„طھط´ظƒظٹظ„ط©: ' . $e->getMessage()
+                'message' => 'ط·آ­ط·آ¯ط·آ« ط·آ®ط·آ·ط·آ£ ط·آ£ط·آ«ط¸â€ ط·آ§ط·طŒ ط·آ­ط¸ظ¾ط·آ¸ ط·آ§ط¸â€‍ط·ع¾ط·آ´ط¸ئ’ط¸ظ¹ط¸â€‍ط·آ©: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    
+    public function saveStats(Request $request)
+    {
+        $request->validate([
+            'match_id' => 'required|exists:matches,id',
+            'players' => 'required|array',
+        ]);
+
+        $match_id = $request->match_id;
+
+        DB::beginTransaction();
+        try {
+            foreach ($request->players as $player) {
+                MatchCallup::where('match_id', $match_id)
+                    ->where('player_id', $player['player_id'])
+                    ->update([
+                        'yellow_cards' => $player['yellow_cards'] ?? 0,
+                        'red_cards' => $player['red_cards'] ?? 0,
+                        'rating' => $player['rating'] ?? null
+                    ]);
+            }
+            DB::commit();
+            return response()->json([
+                'status' => 'success',
+                'message' => 'تم حفظ التقييمات والبطاقات بنجاح'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'حدث خطأ أثناء الحفظ: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -134,13 +169,14 @@ class MatchCallupController extends Controller
             MatchCallup::destroy($request->id);
             return response()->json([
                 'status' => 'success',
-                'message' => 'طھظ… ط­ط°ظپ ط§ظ„ط§ط³طھط¯ط¹ط§ط، ط¨ظ†ط¬ط§ط­'
+                'message' => 'ط·ع¾ط¸â€¦ ط·آ­ط·آ°ط¸ظ¾ ط·آ§ط¸â€‍ط·آ§ط·آ³ط·ع¾ط·آ¯ط·آ¹ط·آ§ط·طŒ ط·آ¨ط¸â€ ط·آ¬ط·آ§ط·آ­'
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ط°ظپ ط§ظ„ط§ط³طھط¯ط¹ط§ط،: ' . $e->getMessage()
+                'message' => 'ط·آ­ط·آ¯ط·آ« ط·آ®ط·آ·ط·آ£ ط·آ£ط·آ«ط¸â€ ط·آ§ط·طŒ ط·آ­ط·آ°ط¸ظ¾ ط·آ§ط¸â€‍ط·آ§ط·آ³ط·ع¾ط·آ¯ط·آ¹ط·آ§ط·طŒ: ' . $e->getMessage()
             ], 500);
         }
     }
 }
+

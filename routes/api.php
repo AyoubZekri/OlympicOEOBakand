@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -151,6 +151,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/matches/callups/create', [MatchCallupController::class, 'store']);
     Route::post('/matches/callups/delete', [MatchCallupController::class, 'destroy']);
     Route::post('/matches/callups/lineup', [MatchCallupController::class, 'saveLineup']);
+    Route::post('/matches/callups/stats', [MatchCallupController::class, 'saveStats']);
 
     // Administrative Match Reports Routes
     Route::get('/administrative-reports/{match_id}', [\App\Http\Controllers\Api\AdministrativeMatchReportController::class, 'show']);
@@ -181,3 +182,4 @@ Route::delete('/clubs/delete/{id}', [ClubController::class, 'destroy']);
 
 
 Route::get('/debug-logs', function() { return implode('', array_slice(file(storage_path('logs/laravel.log')), -100)); });
+
