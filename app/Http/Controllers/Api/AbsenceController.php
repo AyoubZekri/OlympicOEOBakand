@@ -8,20 +8,13 @@ use Illuminate\Http\Request;
 
 class AbsenceController extends Controller
 {
-    /**
-     * Get all absence records from app_absences table.
-     * 
-     * Query params:
-     *   - team_id         : filter by player's team
-     *   - event_category  : 'تدريب' | etc.
-     *   - justification_status : 'none' | 'pending' | 'accepted' | 'rejected'
-     */
     public function index(Request $request)
     {
         $query = AppAbsence::with([
             'playerId',
             'playerId.team',
             'trainingSessionId',
+            'meeting'
         ])->orderByDesc('event_date');
 
         if ($request->filled('team_id')) {
@@ -50,6 +43,8 @@ class AbsenceController extends Controller
                 'session_id'           => $rec->training_session_id,
                 'session_date'         => $rec->trainingSessionId?->session_date,
                 'location'             => $rec->trainingSessionId?->location,
+                'meeting_id'           => $rec->meeting_id,
+                'meeting_topic'        => $rec->meeting_topic ?? $rec->meeting?->topic,
                 'duration'             => $rec->duration,
                 'reason'               => $rec->reason ?? '',
                 'is_justified'         => (bool) $rec->is_justified,
@@ -61,9 +56,6 @@ class AbsenceController extends Controller
         return response()->json($absences);
     }
 
-    /**
-     * Update justification status for an absence record.
-     */
     public function updateJustification(Request $request)
     {
         $validated = $request->validate([
@@ -78,7 +70,7 @@ class AbsenceController extends Controller
             $absence->is_justified         = $validated['justification_status'] === 'accepted';
             $absence->reason               = $validated['justification_text'] ?? $absence->reason;
 
-            // If accepted → upgrade absence_type to مبرر
+            // If accepted upgrade absence_type to مبرر
             if ($validated['justification_status'] === 'accepted') {
                 $absence->absence_type = 'غائب مبرر';
             }
@@ -92,9 +84,6 @@ class AbsenceController extends Controller
         }
     }
 
-    /**
-     * Add a manual absence record (not from training sessions).
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -105,12 +94,16 @@ class AbsenceController extends Controller
             'duration'       => 'nullable|string',
             'reason'         => 'nullable|string',
             'record_source'  => 'nullable|string',
+            'meeting_id'     => 'nullable|integer',
+            'meeting_topic'  => 'nullable|string',
+            'justification_status' => 'nullable|string',
+            'is_justified'   => 'nullable|boolean',
         ]);
 
         try {
             $absence = AppAbsence::create(array_merge($validated, [
-                'is_justified'         => false,
-                'justification_status' => 'none',
+                'is_justified'         => $validated['is_justified'] ?? false,
+                'justification_status' => $validated['justification_status'] ?? 'none',
             ]));
 
             return response()->json(['message' => 'تم تسجيل الغياب بنجاح', 'id' => $absence->id], 201);
@@ -119,9 +112,6 @@ class AbsenceController extends Controller
         }
     }
 
-    /**
-     * Delete an absence record.
-     */
     public function destroy(Request $request)
     {
         $validated = $request->validate([

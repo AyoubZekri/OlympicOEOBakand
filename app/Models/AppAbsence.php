@@ -27,6 +27,11 @@ class AppAbsence extends Model
         return $this->belongsTo(Matchs::class, 'match_id');
     }
 
+    public function meeting()
+    {
+        return $this->belongsTo(Meeting::class, 'meeting_id');
+    }
+
     public function decisionBy()
     {
         return $this->belongsTo(Individual::class, 'decision_by');
