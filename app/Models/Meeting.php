@@ -20,10 +20,13 @@ class Meeting extends Model
         return $this->hasMany(MeetingAttendee::class, 'meeting_id');
     }
 
+    public function absences()
+    {
+        return $this->hasMany(AppAbsence::class, 'meeting_id');
+    }
+
     protected $casts = [
         'attendees' => 'array',
         'points' => 'array',
     ];
 }
-
-
