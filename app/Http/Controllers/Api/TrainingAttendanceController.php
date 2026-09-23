@@ -31,7 +31,7 @@ class TrainingAttendanceController extends Controller
             ->keyBy('player_id');
 
         $medicalRecords = \App\Models\PlayerMedicalRecord::whereIn('player_id', $players->pluck('id'))
-            ->where('record_status', 'ãÝÊæÍ/ãÕÇÈ')
+            ->where('record_status', 'like', '%ãÕÇÈ%')
             ->get()
             ->keyBy('player_id');
 
@@ -122,6 +122,7 @@ class TrainingAttendanceController extends Controller
         }
     }
 }
+
 
 
 
