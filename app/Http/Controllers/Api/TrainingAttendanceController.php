@@ -118,3 +118,4 @@ class TrainingAttendanceController extends Controller
 }
 
 
+
