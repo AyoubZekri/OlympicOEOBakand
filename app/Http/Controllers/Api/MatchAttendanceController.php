@@ -43,8 +43,14 @@ class MatchAttendanceController extends Controller
             ->get()
             ->keyBy('player_id');
 
-        $formattedPlayers = $players->map(function ($player) use ($absences) {
+        $medicalRecords = \App\Models\PlayerMedicalRecord::whereIn('player_id', $players->pluck('id'))
+            ->where('record_status', 'ãÝÊæÍ/ãÕÇÈ')
+            ->get()
+            ->keyBy('player_id');
+
+        $formattedPlayers = $players->map(function ($player) use ($absences, $medicalRecords) {
             $absence = $absences->get($player->id);
+            $medical = $medicalRecords->get($player->id);
             return [
                 'id'           => $player->id,
                 'name'         => $player->first_name . ' ' . $player->last_name,
@@ -123,4 +129,5 @@ class MatchAttendanceController extends Controller
         }
     }
 }
+
 

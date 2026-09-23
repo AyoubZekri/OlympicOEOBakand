@@ -30,8 +30,14 @@ class TrainingAttendanceController extends Controller
             ->get()
             ->keyBy('player_id');
 
-        $data = $players->map(function ($player) use ($existingRecords) {
+        $medicalRecords = \App\Models\PlayerMedicalRecord::whereIn('player_id', $players->pluck('id'))
+            ->where('record_status', 'ãÝÊæÍ/ãÕÇÈ')
+            ->get()
+            ->keyBy('player_id');
+
+        $data = $players->map(function ($player) use ($existingRecords, $medicalRecords) {
             $record = $existingRecords->get($player->id);
+            $medical = $medicalRecords->get($player->id);
             return [
                 'id'           => $player->id,
                 'name'         => $player->first_name . ' ' . $player->last_name,
@@ -116,6 +122,7 @@ class TrainingAttendanceController extends Controller
         }
     }
 }
+
 
 
 
