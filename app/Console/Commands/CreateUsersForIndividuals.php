@@ -45,8 +45,8 @@ class CreateUsersForIndividuals extends Command
             
             $email = "{$firstName}.{$lastName}.{$individual->id}@olympic.com";
             
-            // Default password: password123 (or anything else)
-            $defaultPassword = 'password123';
+            // Generate a random 8-character password
+            $defaultPassword = Str::random(8);
 
             $user = User::create([
                 'name' => trim("{$individual->first_name} {$individual->last_name}"),
