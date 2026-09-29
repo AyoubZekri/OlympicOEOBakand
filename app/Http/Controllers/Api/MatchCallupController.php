@@ -124,45 +124,6 @@ class MatchCallupController extends Controller
         }
     }
 
-    
-    public function saveStats(Request $request)
-    {
-        $request->validate([
-            'match_id' => 'required|exists:matches,id',
-            'players' => 'required|array',
-        ]);
-
-        $match_id = $request->match_id;
-
-        DB::beginTransaction();
-        try {
-            foreach ($request->players as $player) {
-                MatchCallup::where('match_id', $match_id)
-                    ->where('player_id', $player['player_id'])
-                    ->update([
-                        'yellow_cards' => $player['yellow_cards'] ?? 0,
-                        'yellow_card_minute' => $player['yellow_card_minute'] ?? null,
-                        'yellow_card_2_minute' => $player['yellow_card_2_minute'] ?? null,
-                        'red_cards' => $player['red_cards'] ?? 0,
-                        'red_card_minute' => $player['red_card_minute'] ?? null,
-                        'red_card_type' => $player['red_card_type'] ?? null,
-                        'rating' => $player['rating'] ?? null
-                    ]);
-            }
-            DB::commit();
-            return response()->json([
-                'status' => 'success',
-                'message' => 'تم حفظ التقييمات والبطاقات بنجاح'
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => 'حدث خطأ أثناء الحفظ: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
     public function destroy(Request $request)
     {
         $request->validate([
@@ -183,5 +144,3 @@ class MatchCallupController extends Controller
         }
     }
 }
-
-

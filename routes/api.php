@@ -167,6 +167,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'show']);
     Route::post('/player-clearance', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'updateOrCreate']);
     Route::delete('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'destroy']);
+
+    // Tasks
+    Route::get('/tasks', [\App\Http\Controllers\Api\TaskController::class, 'index']);
+    Route::get('/tasks/stats', [\App\Http\Controllers\Api\TaskController::class, 'stats']);
+    Route::get('/tasks/users', [\App\Http\Controllers\Api\TaskController::class, 'users']);
+    Route::get('/tasks/templates', [\App\Http\Controllers\Api\TaskTemplateController::class, 'index']);
+    Route::post('/tasks/templates/create', [\App\Http\Controllers\Api\TaskTemplateController::class, 'store']);
+    Route::post('/tasks/templates/update', [\App\Http\Controllers\Api\TaskTemplateController::class, 'update']);
+    Route::post('/tasks/templates/delete', [\App\Http\Controllers\Api\TaskTemplateController::class, 'destroy']);
+    Route::post('/tasks/create', [\App\Http\Controllers\Api\TaskController::class, 'store']);
+    Route::post('/tasks/update', [\App\Http\Controllers\Api\TaskController::class, 'update']);
+    Route::post('/tasks/delete', [\App\Http\Controllers\Api\TaskController::class, 'destroy']);
+    Route::post('/tasks/restore', [\App\Http\Controllers\Api\TaskController::class, 'restore']);
+    Route::post('/tasks/action', [\App\Http\Controllers\Api\TaskController::class, 'action']);
+    Route::post('/tasks/attachments/create', [\App\Http\Controllers\Api\TaskController::class, 'attach']);
+    Route::post('/tasks/attachments/delete', [\App\Http\Controllers\Api\TaskController::class, 'deleteAttachment']);
+    Route::get('/tasks/{id}', [\App\Http\Controllers\Api\TaskController::class, 'show'])->whereNumber('id');
 });
 
 use App\Http\Controllers\Api\MeetingController;

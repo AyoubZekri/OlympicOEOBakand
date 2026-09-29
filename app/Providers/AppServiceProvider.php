@@ -19,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Tasks created automatically when a match, a training session or a meeting is created
+        \App\Services\Tasks\TaskEventHooks::register();
     }
 }
