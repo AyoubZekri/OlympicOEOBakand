@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Individual;
 use App\Models\User;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -11,7 +13,8 @@ use Illuminate\Support\Str;
  *   - email: the member's email, or a generated one when the member has none
  *   - password: always random, kept with an encrypted copy so it can be shown and handed over from the users page
  *   - no role
- * The account's name and email follow the member when the member is edited. Deleting a member keeps the account.
+ * The account's name and email follow the member when the member is edited, and the member follows the account.
+ * Deleting a member deletes its account (unless that loses history, see deleteFor); deleting an account keeps the member.
  */
 class MemberAccount
 {
@@ -87,6 +90,38 @@ class MemberAccount
         }
         $member->email = str_ends_with((string) $user->email, '@' . self::GENERATED_DOMAIN) ? null : $user->email;
         $member->saveQuietly();
+    }
+
+    /**
+     * The member is being deleted: delete its account too, unless that would lose history.
+     * The account is kept (just no longer linked) when it is the signed-in user's own, when tasks are assigned to it
+     * (they would be deleted with it), or when other records point to it (equipment, disciplinary, matches…).
+     *
+     * @return string|null why the account was kept, or null when it was deleted (or there was none)
+     */
+    public static function deleteFor(?int $userId, ?User $actor): ?string
+    {
+        $user = $userId ? User::find($userId) : null;
+        if (!$user) {
+            return null;
+        }
+        if ($actor && (int) $actor->id === (int) $user->id) {
+            return 'لم يُحذف حساب المستخدم لأنه حسابك الحالي';
+        }
+        if (\App\Models\Task::withTrashed()->where('assignee_id', $user->id)->exists()
+            || \App\Models\TaskTemplate::where('assignee_id', $user->id)->exists()) {
+            return 'لم يُحذف حساب المستخدم لأن له مهاماً مسندة، حتى لا تُحذف معه';
+        }
+
+        try {
+            DB::transaction(function () use ($user) {
+                $user->tokens()->delete();
+                $user->delete();
+            });
+        } catch (QueryException) {
+            return 'لم يُحذف حساب المستخدم لأنه مرتبط بسجلات أخرى (عتاد، إجراءات تأديبية، مباريات…)';
+        }
+        return null;
     }
 
     private static function generatedEmail(Individual $member): string

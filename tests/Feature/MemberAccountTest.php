@@ -56,7 +56,7 @@ class MemberAccountTest extends TestCase
         $this->assertSame($before, Individual::count());
     }
 
-    public function test_the_account_follows_the_member_and_stays_when_the_member_is_deleted(): void
+    public function test_the_account_follows_the_member(): void
     {
         $id = $this->createMember()->json('individual.id');
         $userId = Individual::find($id)->user_id;
@@ -67,9 +67,54 @@ class MemberAccountTest extends TestCase
         $this->assertSame('youcef@club.dz', $user->email);
 
         $this->actingAs($this->admin)->postJson('/api/individuals/update', ['id' => $id, 'email' => $this->admin->email])->assertStatus(422);
+    }
 
-        $this->actingAs($this->admin)->postJson('/api/individuals/delete', ['id' => $id])->assertOk();
+    public function test_deleting_a_member_deletes_its_account_but_not_the_other_way(): void
+    {
+        // Member deleted → account deleted
+        $id = $this->createMember()->json('individual.id');
+        $userId = Individual::find($id)->user_id;
+        $this->actingAs($this->admin)->postJson('/api/individuals/delete', ['id' => $id])->assertOk()->assertJsonPath('account_kept', null);
+        $this->assertNull(User::find($userId));
+
+        // Account deleted from the users page → the member stays, just unlinked
+        $id = $this->createMember()->json('individual.id');
+        $userId = Individual::find($id)->user_id;
+        $this->actingAs($this->admin)->postJson('/api/users/delete', ['id' => $userId])->assertOk();
+        $this->assertNotNull(Individual::find($id));
+        $this->assertNull(Individual::find($id)->user_id);
+
+        // Adding a user does not add a member
+        $before = Individual::count();
+        $this->actingAs($this->admin)->postJson('/api/users/create', ['name' => 'موظف', 'email' => 'staff@club.dz', 'password' => 'secret12'])->assertCreated();
+        $this->assertSame($before, Individual::count());
+    }
+
+    public function test_the_account_is_kept_when_deleting_it_would_lose_history(): void
+    {
+        // Tasks are assigned to it: they would be deleted with it
+        $id = $this->createMember()->json('individual.id');
+        $userId = Individual::find($id)->user_id;
+        \App\Services\Tasks\TaskWorkflow::create(['title' => 'x', 'assignee_id' => $userId, 'created_by' => $this->admin->id], $this->admin->id);
+        $this->actingAs($this->admin)->postJson('/api/individuals/delete', ['id' => $id])->assertOk()
+            ->assertJsonPath('account_kept', 'لم يُحذف حساب المستخدم لأن له مهاماً مسندة، حتى لا تُحذف معه');
+        $this->assertNull(Individual::find($id));
         $this->assertNotNull(User::find($userId));
+
+        // Another record points to it (the database refuses the delete)
+        $id = $this->createMember()->json('individual.id');
+        $userId = Individual::find($id)->user_id;
+        \Illuminate\Support\Facades\DB::table('equipments')->insert(['name' => 'كرات', 'added_by' => $userId]);
+        $this->actingAs($this->admin)->postJson('/api/individuals/delete', ['id' => $id])->assertOk()
+            ->assertJsonPath('account_kept', 'لم يُحذف حساب المستخدم لأنه مرتبط بسجلات أخرى (عتاد، إجراءات تأديبية، مباريات…)');
+        $this->assertNull(Individual::find($id));
+        $this->assertNotNull(User::find($userId));
+
+        // Never the signed-in user's own account
+        $mine = Individual::create(['type' => 'employee', 'first_name' => 'المدير', 'last_name' => 'نفسه', 'user_id' => $this->admin->id]);
+        $this->actingAs($this->admin)->postJson('/api/individuals/delete', ['id' => $mine->id])->assertOk()
+            ->assertJsonPath('account_kept', 'لم يُحذف حساب المستخدم لأنه حسابك الحالي');
+        $this->assertNotNull(User::find($this->admin->id));
     }
 
     public function test_existing_members_get_their_accounts_with_the_command(): void

@@ -145,9 +145,13 @@ class IndividualController extends Controller
         $request->validate(['id' => 'required|exists:individuals,id']);
         
         $individual = Individual::findOrFail($request->id);
+        $userId = $individual->user_id;
         $individual->delete();
 
-        return response()->json(['message' => 'Individual deleted successfully']);
+        // The member's account goes too (kept, unlinked, when deleting it would lose history)
+        $accountKept = MemberAccount::deleteFor($userId, $request->user());
+
+        return response()->json(['message' => 'Individual deleted successfully', 'account_kept' => $accountKept]);
     }
 
     public function printInternalSystem(Request $request)
