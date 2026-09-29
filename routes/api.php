@@ -177,6 +177,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tasks/templates/create', [\App\Http\Controllers\Api\TaskTemplateController::class, 'store']);
     Route::post('/tasks/templates/update', [\App\Http\Controllers\Api\TaskTemplateController::class, 'update']);
     Route::post('/tasks/templates/delete', [\App\Http\Controllers\Api\TaskTemplateController::class, 'destroy']);
+    Route::post('/tasks/templates/toggle', [\App\Http\Controllers\Api\TaskTemplateController::class, 'toggle']);
     Route::post('/tasks/create', [\App\Http\Controllers\Api\TaskController::class, 'store']);
     Route::post('/tasks/update', [\App\Http\Controllers\Api\TaskController::class, 'update']);
     Route::post('/tasks/delete', [\App\Http\Controllers\Api\TaskController::class, 'destroy']);

@@ -17,18 +17,25 @@ use Illuminate\Support\Facades\Storage;
 class TaskController extends Controller
 {
     /**
-     * Tasks list. scope: my (assigned to me) | review (waiting for a reviewer, or reviewed by me) | created | all | archive
+     * Tasks list. scope:
+     *   auto (default): what the signed-in user deals with. Managers (tasks.manage) get every task; others get the tasks
+     *     assigned to them, created by them, and (with tasks.review) the tasks waiting for review or reviewed by them
+     *   my | review | created | all | archive
      * Reviewers are not chosen in advance: every user with tasks.review sees the tasks waiting for review.
      */
     public function index(Request $request)
     {
         $user = $request->user();
-        $scope = $request->query('scope', 'my');
+        $scope = $request->query('scope', 'auto');
+        $canReview = TaskPermissions::can($user, 'review');
+        if ($scope === 'auto' && TaskPermissions::can($user, 'manage')) {
+            $scope = 'all';
+        }
 
         if (in_array($scope, ['all', 'archive'], true) && !TaskPermissions::can($user, 'manage')) {
             return response()->json(['message' => 'لا تملك صلاحية عرض كل المهام'], 403);
         }
-        if ($scope === 'review' && !TaskPermissions::can($user, 'review')) {
+        if ($scope === 'review' && !$canReview) {
             return response()->json(['message' => 'لا تملك صلاحية مراجعة المهام'], 403);
         }
 
@@ -37,6 +44,14 @@ class TaskController extends Controller
             'review' => $query->where('assignee_id', '!=', $user->id)
                 ->where(fn (Builder $q) => $q->where('status', 'in_review')->orWhere('reviewer_id', $user->id)),
             'created' => $query->where('created_by', $user->id),
+            'auto' => $query->where(function (Builder $q) use ($user, $canReview) {
+                $q->where('assignee_id', $user->id)
+                    ->orWhere('created_by', $user->id)
+                    ->orWhere('reviewer_id', $user->id);
+                if ($canReview) {
+                    $q->orWhere(fn (Builder $r) => $r->where('status', 'in_review')->where('assignee_id', '!=', $user->id));
+                }
+            }),
             'all' => null,
             'archive' => $query->onlyTrashed(),
             default => $query->where('assignee_id', $user->id),
@@ -358,6 +373,18 @@ class TaskController extends Controller
 
         if ($full) {
             $data['event'] = $task->source_type === 'event' ? TaskEvents::find($task->source_ref) : null;
+            // The periodic / automatic task this one comes from, so it can be stopped or deleted from here
+            $template = $task->template_id ? $task->template : null;
+            $data['template'] = $template ? [
+                'id' => $template->id,
+                'kind' => $template->kind,
+                'rrule' => $template->rrule,
+                'trigger' => $template->trigger,
+                'active' => $template->active,
+                'next_run_at' => $template->next_run_at?->format('Y-m-d H:i'),
+                'tasks_count' => $template->tasks()->count(),
+                'can_manage' => TaskTemplateController::canManage(request()->user(), $template),
+            ] : null;
             $data['attachments'] = $task->attachments->map(fn ($a) => $this->presentAttachment($a))->values();
             $data['history'] = $task->history->map(fn ($h) => [
                 'id' => $h->id,

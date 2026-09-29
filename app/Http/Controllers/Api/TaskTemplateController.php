@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\TaskTemplate;
+use App\Models\User;
 use App\Services\Tasks\RecurrenceRule;
+use App\Services\Tasks\TaskGenerator;
+use App\Services\Tasks\TaskWorkflow;
 use App\Services\Tasks\TaskPermissions;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -33,6 +36,8 @@ class TaskTemplateController extends Controller
         $template = new TaskTemplate($this->validated($request) + ['created_by' => $request->user()->id]);
         $this->schedule($template);
         $template->save();
+        // The occurrences of the next days appear right away
+        TaskGenerator::runTemplate($template);
 
         return response()->json(['status' => 'success', 'data' => $this->present($template->load(['assignee:id,name']))], 201);
     }
@@ -52,20 +57,67 @@ class TaskTemplateController extends Controller
             $this->schedule($template);
         }
         $template->save();
+        TaskGenerator::runTemplate($template);
 
         return response()->json(['status' => 'success', 'data' => $this->present($template->load(['assignee:id,name']))]);
     }
 
-    /** Tasks already created by the template stay; they only lose the link */
-    public function destroy(Request $request)
+    /**
+     * Stop (active = false) or restart an automatic task.
+     * Stopping also withdraws its upcoming tasks nobody has started yet (created in advance).
+     */
+    public function toggle(Request $request)
     {
-        if (!TaskPermissions::can($request->user(), 'templates')) {
-            return response()->json(['message' => 'لا تملك صلاحية قوالب المهام'], 403);
+        $data = $request->validate(['id' => 'required|exists:task_templates,id', 'active' => 'required|boolean']);
+        $template = TaskTemplate::findOrFail($data['id']);
+        if (!$this->canManage($request->user(), $template)) {
+            return response()->json(['message' => 'لا تملك صلاحية إيقاف هذه المهمة الدورية'], 403);
         }
 
-        TaskTemplate::findOrFail($request->input('id'))->delete();
+        $template->active = (bool) $data['active'];
+        $withdrawn = 0;
+        if ($template->active) {
+            $this->schedule($template);
+            $template->save();
+            TaskGenerator::runTemplate($template);
+        } else {
+            $template->next_run_at = null;
+            $template->save();
+            $withdrawn = $this->withdrawUpcoming($template, $request->user(), 'إيقاف المهمة الدورية');
+        }
 
-        return response()->json(['status' => 'success']);
+        return response()->json(['status' => 'success', 'data' => $this->present($template->load(['assignee:id,name'])), 'withdrawn' => $withdrawn]);
+    }
+
+    /** Delete the template: no more tasks; its upcoming unstarted tasks are withdrawn, the others stay (without the link) */
+    public function destroy(Request $request)
+    {
+        $template = TaskTemplate::findOrFail($request->input('id'));
+        if (!$this->canManage($request->user(), $template)) {
+            return response()->json(['message' => 'لا تملك صلاحية حذف هذه المهمة الدورية'], 403);
+        }
+
+        $withdrawn = $this->withdrawUpcoming($template, $request->user(), 'حذف المهمة الدورية');
+        $template->delete();
+
+        return response()->json(['status' => 'success', 'withdrawn' => $withdrawn]);
+    }
+
+    /** Who may stop or delete an automatic task: the templates permission, or the one who created it */
+    public static function canManage(?User $user, TaskTemplate $template): bool
+    {
+        return $user !== null && (TaskPermissions::can($user, 'templates') || (int) $template->created_by === (int) $user->id);
+    }
+
+    /** The template's tasks that have not started yet and whose date is still ahead go to the archive */
+    private function withdrawUpcoming(TaskTemplate $template, User $user, string $note): int
+    {
+        $tasks = Task::where('template_id', $template->id)->where('status', 'assigned')->where('starts_at', '>', now())->get();
+        foreach ($tasks as $task) {
+            TaskWorkflow::record($task, 'deleted', $task->status, $task->status, $user->id, $note);
+            $task->delete();
+        }
+        return $tasks->count();
     }
 
     private function validated(Request $request): array

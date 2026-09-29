@@ -8,7 +8,8 @@ use Carbon\CarbonImmutable;
 
 /**
  * Creates tasks from templates:
- *  - periodic templates: one task per RRULE occurrence (run by the tasks:generate-periodic command),
+ *  - periodic templates: one task per RRULE occurrence, created LEAD_DAYS days before its date
+ *    (run by the tasks:generate-periodic command, and right after a template is saved),
  *  - event templates: tasks for a system event (a match, a training session, a meeting is created).
  * Each occurrence / event creates its task only once.
  */
@@ -17,40 +18,56 @@ class TaskGenerator
     /** Most missed occurrences created per template in one run (after the server was down) */
     private const MAX_PER_RUN = 31;
 
-    /** Create the periodic tasks that are due; returns how many were created */
+    /** A periodic task is created this many days before its date, so it shows up in advance */
+    public const LEAD_DAYS = 3;
+
+    /** Create the periodic tasks whose date is within the next LEAD_DAYS days; returns how many were created */
     public static function runPeriodic(?CarbonImmutable $now = null): int
     {
         $now ??= CarbonImmutable::now();
         $created = 0;
-
         TaskTemplate::where('kind', 'periodic')->where('active', true)->whereNotNull('rrule')->get()
             ->each(function (TaskTemplate $template) use ($now, &$created) {
-                $anchor = CarbonImmutable::parse($template->starts_on ?? $template->created_at);
-                try {
-                    $rule = new RecurrenceRule($template->rrule, $anchor);
-                } catch (\Throwable) {
-                    return; // an invalid rule never blocks the other templates
-                }
-
-                $next = $template->next_run_at
-                    ? CarbonImmutable::parse($template->next_run_at)
-                    : $rule->nextAfter($anchor->subSecond());
-
-                $count = 0;
-                while ($next && $next->lessThanOrEqualTo($now) && $count < self::MAX_PER_RUN) {
-                    if (self::createFromTemplate($template, $next, 'periodic', null)) {
-                        $created++;
-                    }
-                    $count++;
-                    $next = $rule->nextAfter($next);
-                }
-
-                $template->next_run_at = $next;
-                if (!$next) {
-                    $template->active = false; // the rule has ended (UNTIL)
-                }
-                $template->save();
+                $created += self::runTemplate($template, $now);
             });
+        return $created;
+    }
+
+    /** One periodic template: create its occurrences up to now + LEAD_DAYS and move next_run_at forward */
+    public static function runTemplate(TaskTemplate $template, ?CarbonImmutable $now = null): int
+    {
+        $now ??= CarbonImmutable::now();
+        if ($template->kind !== 'periodic' || !$template->active || !$template->rrule) {
+            return 0;
+        }
+
+        $anchor = CarbonImmutable::parse($template->starts_on ?? $template->created_at);
+        try {
+            $rule = new RecurrenceRule($template->rrule, $anchor);
+        } catch (\Throwable) {
+            return 0; // an invalid rule never blocks the other templates
+        }
+
+        $next = $template->next_run_at
+            ? CarbonImmutable::parse($template->next_run_at)
+            : $rule->nextAfter($anchor->subSecond());
+        $horizon = $now->addDays(self::LEAD_DAYS);
+
+        $created = 0;
+        $count = 0;
+        while ($next && $next->lessThanOrEqualTo($horizon) && $count < self::MAX_PER_RUN) {
+            if (self::createFromTemplate($template, $next, 'periodic', null)) {
+                $created++;
+            }
+            $count++;
+            $next = $rule->nextAfter($next);
+        }
+
+        $template->next_run_at = $next;
+        if (!$next) {
+            $template->active = false; // the rule has ended (UNTIL)
+        }
+        $template->save();
 
         return $created;
     }
