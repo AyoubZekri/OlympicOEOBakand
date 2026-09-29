@@ -81,15 +81,17 @@ class TaskSystemTest extends TestCase
     {
         $task = $this->createTask();
 
-        // Only the assignee starts; nobody reviews their own task, even with the review permission
-        $this->act($this->reviewer, $task['id'], 'start')->assertForbidden();
-        $this->act($this->worker, $task['id'], 'start')->assertOk();
+        // Changing the status is open to anyone who can see the task (here the creator);
+        // nobody reviews their own task, even with the review permission
+        $this->act($this->manager, $task['id'], 'start')->assertOk();
         $this->act($this->worker, $task['id'], 'submit')->assertOk();
         $this->act($this->worker, $task['id'], 'approve')->assertForbidden();
 
         // Without the review permission
         $plain = User::factory()->create(['role_id' => Role::create(['name' => 'plain', 'type' => 'custom', 'permissions' => json_encode(['_v' => 2, 'tasks' => ['view' => true]])])->id]);
         $this->act($plain, $task['id'], 'approve')->assertForbidden();
+        // Someone unrelated to the task cannot change it
+        $this->act($plain, $task['id'], 'block', ['reason' => 'financial'])->assertForbidden();
         $this->actingAs($plain)->getJson('/api/tasks?scope=review')->assertForbidden();
 
         // Wrong status

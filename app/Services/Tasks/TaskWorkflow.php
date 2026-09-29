@@ -19,12 +19,16 @@ use Illuminate\Support\Facades\DB;
  */
 class TaskWorkflow
 {
-    /** action => [allowed "from" statuses, "to" status, actor: assignee | reviewer] */
+    /**
+     * action => [allowed "from" statuses, "to" status, actor]
+     * actor "anyone": any user who can see the task (checked by the controller); "reviewer": the review permission,
+     * and never the task's own assignee.
+     */
     private const ACTIONS = [
-        'start' => [['assigned', 'returned'], 'in_progress', 'assignee'],
-        'block' => [['in_progress'], 'blocked', 'assignee'],
-        'resume' => [['blocked'], 'in_progress', 'assignee'],
-        'submit' => [['in_progress'], 'in_review', 'assignee'],
+        'start' => [['assigned', 'returned'], 'in_progress', 'anyone'],
+        'block' => [['in_progress'], 'blocked', 'anyone'],
+        'resume' => [['blocked'], 'in_progress', 'anyone'],
+        'submit' => [['in_progress'], 'in_review', 'anyone'],
         'approve' => [['in_review'], 'approved', 'reviewer'],
         'return' => [['in_review'], 'returned', 'reviewer'],
     ];
@@ -67,9 +71,6 @@ class TaskWorkflow
         [$from, $to, $actor] = self::ACTIONS[$action];
 
         // Who may act
-        if ($actor === 'assignee' && (int) $task->assignee_id !== (int) $user->id) {
-            throw new TaskWorkflowException('هذا الإجراء خاص بالمكلف بالمهمة', 403);
-        }
         if ($actor === 'reviewer') {
             if (!TaskPermissions::can($user, 'review')) {
                 throw new TaskWorkflowException('لا تملك صلاحية مراجعة المهام', 403);
@@ -149,9 +150,6 @@ class TaskWorkflow
     /** Add a proof attachment (file / image / text / link) and log it */
     public static function attach(Task $task, User $user, array $data): TaskAttachment
     {
-        if ((int) $task->assignee_id !== (int) $user->id) {
-            throw new TaskWorkflowException('الإثبات يرفعه المكلف بالمهمة', 403);
-        }
         if (in_array($task->status, ['approved', 'in_review'], true)) {
             throw new TaskWorkflowException('لا يمكن إضافة مرفقات بعد إرسال المهمة للمراجعة', 422);
         }

@@ -175,13 +175,18 @@ class TaskController extends Controller
             'note' => 'nullable|string',
         ]);
         $user = $request->user();
+        $task = Task::findOrFail($request->input('id'));
 
+        // Anyone who can see the task may change its status; approving / returning needs the review permission
+        if (!$this->canSee($user, $task)) {
+            return response()->json(['message' => 'لا تملك صلاحية على هذه المهمة'], 403);
+        }
         if (in_array($request->input('action'), ['approve', 'return'], true) && !TaskPermissions::can($user, 'review')) {
             return response()->json(['message' => 'لا تملك صلاحية مراجعة المهام'], 403);
         }
 
         try {
-            $task = TaskWorkflow::apply(Task::findOrFail($request->input('id')), $request->input('action'), $user, $request->only(['reason', 'note']));
+            $task = TaskWorkflow::apply($task, $request->input('action'), $user, $request->only(['reason', 'note']));
         } catch (TaskWorkflowException $e) {
             return response()->json(['message' => $e->getMessage()], $e->status());
         }
@@ -200,6 +205,9 @@ class TaskController extends Controller
             'body' => 'required_if:type,text|nullable|string|max:5000',
         ]);
         $task = Task::findOrFail($request->input('id'));
+        if (!$this->canSee($request->user(), $task)) {
+            return response()->json(['message' => 'لا تملك صلاحية على هذه المهمة'], 403);
+        }
         $type = $request->input('type');
 
         $data = ['type' => $type];
