@@ -259,4 +259,30 @@ class TaskSystemTest extends TestCase
         $this->assertNull($task->reviewer_id);
         $this->assertTrue($task->requires_approval);
     }
+
+    public function test_task_linked_to_an_upcoming_match_or_training(): void
+    {
+        $past = \App\Models\Matchs::create(['opponent' => 'القديم', 'match_date' => now()->subDays(3)]);
+        $match = \App\Models\Matchs::create(['opponent' => 'النجم', 'match_date' => now()->addDays(2)->setTime(16, 0)]);
+        $training = \App\Models\TrainingSession::create(['session_date' => now()->addDay()->toDateString(), 'start_time' => '18:30', 'status' => 'مجدولة']);
+        \App\Models\TrainingSession::create(['session_date' => now()->addDay()->toDateString(), 'status' => 'ملغاة']);
+
+        $matches = $this->actingAs($this->manager)->getJson('/api/tasks/events?type=match')->assertOk()->json('data');
+        $this->assertSame([$match->id], array_column($matches, 'id'));
+        $this->assertSame('مباراة ضد النجم', $matches[0]['title']);
+
+        $trainings = $this->actingAs($this->manager)->getJson('/api/tasks/events?type=training')->assertOk()->json('data');
+        $this->assertSame([$training->id], array_column($trainings, 'id'));
+        $this->assertStringEndsWith('18:30', $trainings[0]['at']);
+
+        $task = $this->createTask(['event_type' => 'match', 'event_id' => $match->id]);
+        $this->assertSame('event', $task['source_type']);
+        $this->assertSame("match:{$match->id}", $task['source_ref']);
+        $this->actingAs($this->worker)->getJson("/api/tasks/{$task['id']}")->assertJsonPath('data.event.title', 'مباراة ضد النجم');
+
+        $this->actingAs($this->manager)->postJson('/api/tasks/create', [
+            'title' => 'x', 'assignee_id' => $this->worker->id, 'event_type' => 'training', 'event_id' => 999,
+        ])->assertStatus(422);
+        $this->assertNotNull($past);
+    }
 }

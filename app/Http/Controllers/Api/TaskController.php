@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\TaskAttachment;
 use App\Models\User;
+use App\Services\Tasks\TaskEvents;
 use App\Services\Tasks\TaskPermissions;
 use App\Services\Tasks\TaskWorkflow;
 use App\Services\Tasks\TaskWorkflowException;
@@ -80,7 +81,21 @@ class TaskController extends Controller
         }
 
         $data = $this->validated($request);
-        $task = TaskWorkflow::create($data + ['created_by' => $user->id, 'source_type' => 'manual'], $user->id);
+
+        // Linked to a specific match or training session
+        $source = ['source_type' => 'manual', 'source_ref' => null];
+        $event = $request->validate([
+            'event_type' => 'nullable|in:' . implode(',', TaskEvents::TYPES),
+            'event_id' => 'required_with:event_type|nullable|integer',
+        ], ['event_id.required_with' => 'اختر المباراة أو الحصة التدريبية']);
+        if (!empty($event['event_type'])) {
+            if (!TaskEvents::exists($event['event_type'], (int) $event['event_id'])) {
+                return response()->json(['message' => 'المباراة أو الحصة التدريبية غير موجودة'], 422);
+            }
+            $source = ['source_type' => 'event', 'source_ref' => "{$event['event_type']}:{$event['event_id']}"];
+        }
+
+        $task = TaskWorkflow::create($data + $source + ['created_by' => $user->id], $user->id);
 
         return response()->json(['status' => 'success', 'data' => $this->present($task->fresh(['assignee:id,name', 'reviewer:id,name', 'creator:id,name']))], 201);
     }
@@ -255,6 +270,16 @@ class TaskController extends Controller
         return response()->json(['status' => 'success', 'data' => $summary($tasks) + ['by_assignee' => $byAssignee]]);
     }
 
+    /** Upcoming matches or training sessions a new task can be linked to (type: match | training) */
+    public function events(Request $request)
+    {
+        $type = $request->query('type', 'match');
+        if (!in_array($type, TaskEvents::TYPES, true)) {
+            return response()->json(['message' => 'نوع غير معروف'], 422);
+        }
+        return response()->json(['status' => 'success', 'data' => TaskEvents::upcoming($type)]);
+    }
+
     /** People a task can be given to */
     public function users()
     {
@@ -332,6 +357,7 @@ class TaskController extends Controller
         ];
 
         if ($full) {
+            $data['event'] = $task->source_type === 'event' ? TaskEvents::find($task->source_ref) : null;
             $data['attachments'] = $task->attachments->map(fn ($a) => $this->presentAttachment($a))->values();
             $data['history'] = $task->history->map(fn ($h) => [
                 'id' => $h->id,

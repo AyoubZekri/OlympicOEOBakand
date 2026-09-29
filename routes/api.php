@@ -172,6 +172,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tasks', [\App\Http\Controllers\Api\TaskController::class, 'index']);
     Route::get('/tasks/stats', [\App\Http\Controllers\Api\TaskController::class, 'stats']);
     Route::get('/tasks/users', [\App\Http\Controllers\Api\TaskController::class, 'users']);
+    Route::get('/tasks/events', [\App\Http\Controllers\Api\TaskController::class, 'events']);
     Route::get('/tasks/templates', [\App\Http\Controllers\Api\TaskTemplateController::class, 'index']);
     Route::post('/tasks/templates/create', [\App\Http\Controllers\Api\TaskTemplateController::class, 'store']);
     Route::post('/tasks/templates/update', [\App\Http\Controllers\Api\TaskTemplateController::class, 'update']);
