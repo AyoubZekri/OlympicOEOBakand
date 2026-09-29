@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\MemberAccount;
+use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
 use App\Models\Individual;
 use Illuminate\Http\Request;
@@ -58,9 +60,23 @@ class IndividualController extends Controller
             $validated['insurance_document'] = $request->file('insurance_document')->store('documents', 'public');
         }
 
-        $individual = Individual::create($validated);
+        // Every member gets a user account; its email is the member's email, which must not be another account's login
+        if (MemberAccount::emailTaken($validated['email'] ?? null)) {
+            return response()->json(['message' => 'هذا البريد الإلكتروني مستعمل في حساب مستخدم آخر'], 422);
+        }
 
-        return response()->json(['message' => 'Individual created successfully', 'individual' => $individual], 201);
+        [$individual, $account] = DB::transaction(function () use ($validated) {
+            $individual = Individual::create($validated);
+            $account = MemberAccount::sync($individual);
+            return [$individual->fresh(), $account];
+        });
+
+        return response()->json([
+            'message' => 'Individual created successfully',
+            'individual' => $individual,
+            // Shown once: the account's login and its random password
+            'account' => ['id' => $account['user']->id, 'email' => $account['user']->email, 'password' => $account['password']],
+        ], 201);
     }
 
     public function update(Request $request)
@@ -111,9 +127,17 @@ class IndividualController extends Controller
             $validated['insurance_document'] = $request->file('insurance_document')->store('documents', 'public');
         }
 
-        $individual->update($validated);
+        if (array_key_exists('email', $validated) && MemberAccount::emailTaken($validated['email'], $individual)) {
+            return response()->json(['message' => 'هذا البريد الإلكتروني مستعمل في حساب مستخدم آخر'], 422);
+        }
 
-        return response()->json(['message' => 'Individual updated successfully', 'individual' => $individual]);
+        DB::transaction(function () use ($individual, $validated) {
+            $individual->update($validated);
+            // The account follows the member's name and email (and is created for members added before accounts)
+            MemberAccount::sync($individual);
+        });
+
+        return response()->json(['message' => 'Individual updated successfully', 'individual' => $individual->fresh()]);
     }
 
     public function destroy(Request $request)

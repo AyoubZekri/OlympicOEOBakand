@@ -14,3 +14,13 @@ Artisan::command('tasks:generate-periodic', function () {
 })->purpose('Create the periodic tasks that are due');
 
 \Illuminate\Support\Facades\Schedule::command('tasks:generate-periodic')->everyFifteenMinutes()->withoutOverlapping();
+
+// Members added before accounts existed: give each one its user account (generated email when none, random password)
+Artisan::command('members:create-accounts', function () {
+    $count = 0;
+    \App\Models\Individual::whereNull('user_id')->orderBy('id')->each(function ($member) use (&$count) {
+        \App\Services\MemberAccount::sync($member);
+        $count++;
+    });
+    $this->info("Created {$count} member account(s).");
+})->purpose('Create the user accounts of the members that have none');
