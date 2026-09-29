@@ -9,7 +9,7 @@ class TaskTemplate extends Model
     public const TRIGGERS = ['match.created', 'training.created', 'meeting.created'];
 
     protected $fillable = [
-        'title', 'description', 'kind', 'assignee_id', 'reviewer_id', 'created_by', 'priority',
+        'title', 'description', 'kind', 'assignee_id', 'created_by', 'priority',
         'requires_approval', 'requires_proof', 'rrule', 'starts_on', 'next_run_at', 'trigger',
         'offset_minutes', 'duration_minutes', 'active',
     ];
@@ -27,11 +27,6 @@ class TaskTemplate extends Model
     public function assignee()
     {
         return $this->belongsTo(User::class, 'assignee_id');
-    }
-
-    public function reviewer()
-    {
-        return $this->belongsTo(User::class, 'reviewer_id');
     }
 
     public function tasks()

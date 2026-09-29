@@ -18,7 +18,6 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->string('kind', 20); // periodic | event
             $table->foreignId('assignee_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('reviewer_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->string('priority', 10)->default('normal');
             $table->boolean('requires_approval')->default(true);
@@ -41,6 +40,7 @@ return new class extends Migration
             $table->string('title');
             $table->text('description')->nullable();
             $table->foreignId('assignee_id')->constrained('users')->cascadeOnDelete();
+            // Who reviewed the task: set when someone with the review permission approves or returns it
             $table->foreignId('reviewer_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->string('priority', 10)->default('normal'); // low | normal | high | urgent

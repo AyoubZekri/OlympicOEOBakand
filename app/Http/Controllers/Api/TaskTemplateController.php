@@ -19,7 +19,7 @@ class TaskTemplateController extends Controller
             return response()->json(['message' => 'لا تملك صلاحية قوالب المهام'], 403);
         }
 
-        $templates = TaskTemplate::with(['assignee:id,name', 'reviewer:id,name'])->withCount('tasks')->orderByDesc('id')->get();
+        $templates = TaskTemplate::with(['assignee:id,name'])->withCount('tasks')->orderByDesc('id')->get();
 
         return response()->json(['status' => 'success', 'data' => $templates->map(fn ($t) => $this->present($t))]);
     }
@@ -34,7 +34,7 @@ class TaskTemplateController extends Controller
         $this->schedule($template);
         $template->save();
 
-        return response()->json(['status' => 'success', 'data' => $this->present($template->load(['assignee:id,name', 'reviewer:id,name']))], 201);
+        return response()->json(['status' => 'success', 'data' => $this->present($template->load(['assignee:id,name']))], 201);
     }
 
     public function update(Request $request)
@@ -53,7 +53,7 @@ class TaskTemplateController extends Controller
         }
         $template->save();
 
-        return response()->json(['status' => 'success', 'data' => $this->present($template->load(['assignee:id,name', 'reviewer:id,name']))]);
+        return response()->json(['status' => 'success', 'data' => $this->present($template->load(['assignee:id,name']))]);
     }
 
     /** Tasks already created by the template stay; they only lose the link */
@@ -75,7 +75,6 @@ class TaskTemplateController extends Controller
             'description' => 'nullable|string',
             'kind' => 'required|in:periodic,event',
             'assignee_id' => 'required|exists:users,id',
-            'reviewer_id' => 'nullable|exists:users,id|different:assignee_id',
             'priority' => 'nullable|in:' . implode(',', Task::PRIORITIES),
             'requires_approval' => 'boolean',
             'requires_proof' => 'boolean',
@@ -86,7 +85,6 @@ class TaskTemplateController extends Controller
             'duration_minutes' => 'nullable|integer|between:1,525600',
             'active' => 'boolean',
         ], [
-            'reviewer_id.different' => 'المراجع يجب أن يكون شخصاً غير المكلف',
             'rrule.required_if' => 'حدد تكرار المهمة',
             'trigger.required_if' => 'اختر الحدث الذي ينشئ المهمة',
         ]);
@@ -101,12 +99,6 @@ class TaskTemplateController extends Controller
         $data['offset_minutes'] = (int) ($data['offset_minutes'] ?? 0);
         $data['duration_minutes'] = (int) ($data['duration_minutes'] ?? 1440);
         $data['active'] = (bool) ($data['active'] ?? true);
-        if ($data['requires_approval'] && empty($data['reviewer_id'])) {
-            abort(response()->json(['message' => 'اختر مراجع المهام، أو ألغِ خيار "تتطلب اعتماد"'], 422));
-        }
-        if (!$data['requires_approval']) {
-            $data['reviewer_id'] = null;
-        }
 
         if ($data['kind'] === 'periodic') {
             $data['trigger'] = null;
@@ -140,8 +132,6 @@ class TaskTemplateController extends Controller
             'kind' => $t->kind,
             'assignee_id' => $t->assignee_id,
             'assignee_name' => $t->assignee?->name,
-            'reviewer_id' => $t->reviewer_id,
-            'reviewer_name' => $t->reviewer?->name,
             'priority' => $t->priority,
             'requires_approval' => $t->requires_approval,
             'requires_proof' => $t->requires_proof,

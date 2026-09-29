@@ -15,7 +15,10 @@ use Illuminate\Support\Facades\Storage;
 
 class TaskController extends Controller
 {
-    /** Tasks list. scope: my (assigned to me) | review (waiting for my review) | created | all | archive */
+    /**
+     * Tasks list. scope: my (assigned to me) | review (waiting for a reviewer, or reviewed by me) | created | all | archive
+     * Reviewers are not chosen in advance: every user with tasks.review sees the tasks waiting for review.
+     */
     public function index(Request $request)
     {
         $user = $request->user();
@@ -24,10 +27,14 @@ class TaskController extends Controller
         if (in_array($scope, ['all', 'archive'], true) && !TaskPermissions::can($user, 'manage')) {
             return response()->json(['message' => 'لا تملك صلاحية عرض كل المهام'], 403);
         }
+        if ($scope === 'review' && !TaskPermissions::can($user, 'review')) {
+            return response()->json(['message' => 'لا تملك صلاحية مراجعة المهام'], 403);
+        }
 
         $query = Task::query()->with(['assignee:id,name', 'reviewer:id,name', 'creator:id,name'])->withCount('attachments');
         match ($scope) {
-            'review' => $query->where('reviewer_id', $user->id),
+            'review' => $query->where('assignee_id', '!=', $user->id)
+                ->where(fn (Builder $q) => $q->where('status', 'in_review')->orWhere('reviewer_id', $user->id)),
             'created' => $query->where('created_by', $user->id),
             'all' => null,
             'archive' => $query->onlyTrashed(),
@@ -270,33 +277,26 @@ class TaskController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'assignee_id' => 'required|exists:users,id',
-            'reviewer_id' => 'nullable|exists:users,id|different:assignee_id',
             'priority' => 'nullable|in:' . implode(',', Task::PRIORITIES),
             'starts_at' => 'nullable|date',
             'due_at' => 'nullable|date|after_or_equal:starts_at',
             'requires_approval' => 'boolean',
             'requires_proof' => 'boolean',
         ], [
-            'reviewer_id.different' => 'المراجع يجب أن يكون شخصاً غير المكلف',
             'due_at.after_or_equal' => 'آخر أجل يجب أن يكون بعد تاريخ البداية',
         ]);
 
         $data['priority'] ??= 'normal';
         $data['requires_approval'] = (bool) ($data['requires_approval'] ?? true);
         $data['requires_proof'] = (bool) ($data['requires_proof'] ?? false);
-        if ($data['requires_approval'] && empty($data['reviewer_id'])) {
-            abort(response()->json(['message' => 'اختر مراجع المهمة، أو ألغِ خيار "تتطلب اعتماد"'], 422));
-        }
-        if (!$data['requires_approval']) {
-            $data['reviewer_id'] = null;
-        }
         return $data;
     }
 
     private function canSee(User $user, Task $task): bool
     {
         return in_array((int) $user->id, [(int) $task->assignee_id, (int) $task->reviewer_id, (int) $task->created_by], true)
-            || TaskPermissions::can($user, 'manage');
+            || TaskPermissions::can($user, 'manage')
+            || ($task->status === 'in_review' && TaskPermissions::can($user, 'review'));
     }
 
     private function present(Task $task, bool $full = false): array

@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\DB;
  *
  *   assigned → in_progress → (blocked ⇄ in_progress) → in_review → approved | returned → in_progress
  *   A task that does not require approval goes straight from in_progress to approved.
+ *   The reviewer is not chosen in advance: anyone with the tasks.review permission (other than the assignee)
+ *   may approve or return a task, and becomes its reviewer.
  */
 class TaskWorkflow
 {
@@ -68,8 +70,13 @@ class TaskWorkflow
         if ($actor === 'assignee' && (int) $task->assignee_id !== (int) $user->id) {
             throw new TaskWorkflowException('هذا الإجراء خاص بالمكلف بالمهمة', 403);
         }
-        if ($actor === 'reviewer' && (int) $task->reviewer_id !== (int) $user->id) {
-            throw new TaskWorkflowException('هذا الإجراء خاص بمراجع المهمة', 403);
+        if ($actor === 'reviewer') {
+            if (!TaskPermissions::can($user, 'review')) {
+                throw new TaskWorkflowException('لا تملك صلاحية مراجعة المهام', 403);
+            }
+            if ((int) $task->assignee_id === (int) $user->id) {
+                throw new TaskWorkflowException('لا يمكنك مراجعة مهمة مكلف بها', 403);
+            }
         }
 
         // From which status
@@ -113,6 +120,7 @@ class TaskWorkflow
                 break;
 
             case 'approve':
+                $task->reviewer_id = $user->id;
                 $task->approved_at = now();
                 $task->return_reason = null;
                 break;
@@ -122,6 +130,7 @@ class TaskWorkflow
                 if ($reason === '') {
                     throw new TaskWorkflowException('اكتب سبب الإرجاع للتصحيح', 422);
                 }
+                $task->reviewer_id = $user->id;
                 $task->return_reason = $reason;
                 $task->completed_at = null;
                 $note = $reason;

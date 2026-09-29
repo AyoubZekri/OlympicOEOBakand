@@ -43,7 +43,6 @@ class TaskSystemTest extends TestCase
         return $this->actingAs($this->manager)->postJson('/api/tasks/create', $extra + [
             'title' => 'تحضير أرضية الملعب',
             'assignee_id' => $this->worker->id,
-            'reviewer_id' => $this->reviewer->id,
             'due_at' => now()->addDay()->toDateTimeString(),
             'requires_approval' => true,
         ])->assertCreated()->json('data');
@@ -68,7 +67,8 @@ class TaskSystemTest extends TestCase
             ->assertJsonPath('data.status', 'returned')->assertJsonPath('data.return_reason', 'الصور غير واضحة');
         $this->act($this->worker, $task['id'], 'start')->assertOk();
         $this->act($this->worker, $task['id'], 'submit')->assertOk();
-        $this->act($this->reviewer, $task['id'], 'approve')->assertOk()->assertJsonPath('data.status', 'approved');
+        $this->act($this->reviewer, $task['id'], 'approve')->assertOk()->assertJsonPath('data.status', 'approved')
+            ->assertJsonPath('data.reviewer_id', $this->reviewer->id);
 
         $history = $this->actingAs($this->worker)->getJson("/api/tasks/{$task['id']}")->assertOk()->json('data.history');
         $this->assertSame(
@@ -81,11 +81,16 @@ class TaskSystemTest extends TestCase
     {
         $task = $this->createTask();
 
-        // The reviewer cannot start, the worker cannot approve its own work
+        // Only the assignee starts; nobody reviews their own task, even with the review permission
         $this->act($this->reviewer, $task['id'], 'start')->assertForbidden();
         $this->act($this->worker, $task['id'], 'start')->assertOk();
         $this->act($this->worker, $task['id'], 'submit')->assertOk();
         $this->act($this->worker, $task['id'], 'approve')->assertForbidden();
+
+        // Without the review permission
+        $plain = User::factory()->create(['role_id' => Role::create(['name' => 'plain', 'type' => 'custom', 'permissions' => json_encode(['_v' => 2, 'tasks' => ['view' => true]])])->id]);
+        $this->act($plain, $task['id'], 'approve')->assertForbidden();
+        $this->actingAs($plain)->getJson('/api/tasks?scope=review')->assertForbidden();
 
         // Wrong status
         $this->act($this->worker, $task['id'], 'block', ['reason' => 'financial'])->assertStatus(422);
@@ -98,9 +103,8 @@ class TaskSystemTest extends TestCase
             'title' => 'x', 'assignee_id' => $this->reviewer->id, 'requires_approval' => false,
         ])->assertForbidden();
 
-        // Someone outside the task cannot open it
-        $stranger = User::factory()->create(['role_id' => $this->worker->role_id]);
-        $this->actingAs($stranger)->getJson("/api/tasks/{$task['id']}")->assertForbidden();
+        // Someone outside the task, without the review permission, cannot open it
+        $this->actingAs($plain)->getJson("/api/tasks/{$task['id']}")->assertForbidden();
     }
 
     public function test_block_reason_other_needs_a_note(): void
@@ -133,19 +137,32 @@ class TaskSystemTest extends TestCase
 
     public function test_task_without_approval_is_done_on_submit(): void
     {
-        $task = $this->createTask(['requires_approval' => false, 'reviewer_id' => null]);
+        $task = $this->createTask(['requires_approval' => false]);
         $this->act($this->worker, $task['id'], 'start');
         $this->act($this->worker, $task['id'], 'submit')->assertOk()->assertJsonPath('data.status', 'approved');
     }
 
-    public function test_reviewer_must_differ_and_is_required_with_approval(): void
+    public function test_any_reviewer_sees_waiting_tasks_and_becomes_the_reviewer(): void
     {
-        $this->actingAs($this->manager)->postJson('/api/tasks/create', [
-            'title' => 'x', 'assignee_id' => $this->worker->id, 'reviewer_id' => $this->worker->id,
-        ])->assertStatus(422);
-        $this->actingAs($this->manager)->postJson('/api/tasks/create', [
-            'title' => 'x', 'assignee_id' => $this->worker->id, 'requires_approval' => true,
-        ])->assertStatus(422);
+        $task = $this->createTask();
+        $this->assertNull($task['reviewer_id']);
+        $this->act($this->worker, $task['id'], 'start');
+
+        // Not waiting for review yet
+        $this->actingAs($this->reviewer)->getJson('/api/tasks?scope=review')->assertJsonCount(0, 'data');
+        $this->actingAs($this->reviewer)->getJson("/api/tasks/{$task['id']}")->assertForbidden();
+
+        $this->act($this->worker, $task['id'], 'submit');
+        $this->actingAs($this->reviewer)->getJson('/api/tasks?scope=review')->assertJsonCount(1, 'data');
+        $this->actingAs($this->reviewer)->getJson("/api/tasks/{$task['id']}")->assertOk();
+        // The assignee's own tasks are not in their review list
+        $this->actingAs($this->worker)->getJson('/api/tasks?scope=review')->assertJsonCount(0, 'data');
+
+        $this->act($this->manager, $task['id'], 'return', ['reason' => 'ناقص'])->assertOk()
+            ->assertJsonPath('data.reviewer_id', $this->manager->id);
+        // Still listed for the one who reviewed it
+        $this->actingAs($this->manager)->getJson('/api/tasks?scope=review')->assertJsonCount(1, 'data');
+        $this->actingAs($this->reviewer)->getJson('/api/tasks?scope=review')->assertJsonCount(0, 'data');
     }
 
     public function test_scopes_archive_and_stats(): void
@@ -155,7 +172,6 @@ class TaskSystemTest extends TestCase
 
         $this->actingAs($this->worker)->getJson('/api/tasks?scope=my')->assertOk()->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.is_overdue', true);
-        $this->actingAs($this->reviewer)->getJson('/api/tasks?scope=review')->assertOk()->assertJsonCount(2, 'data');
         $this->actingAs($this->worker)->getJson('/api/tasks?scope=all')->assertForbidden();
 
         $this->actingAs($this->manager)->postJson('/api/tasks/delete', ['id' => $task['id']])->assertOk();
@@ -171,8 +187,8 @@ class TaskSystemTest extends TestCase
 
     public function test_on_time_rate(): void
     {
-        $late = $this->createTask(['requires_approval' => false, 'reviewer_id' => null, 'due_at' => now()->subDay()->toDateTimeString()]);
-        $onTime = $this->createTask(['requires_approval' => false, 'reviewer_id' => null]);
+        $late = $this->createTask(['requires_approval' => false, 'due_at' => now()->subDay()->toDateTimeString()]);
+        $onTime = $this->createTask(['requires_approval' => false]);
         foreach ([$late, $onTime] as $t) {
             $this->act($this->worker, $t['id'], 'start');
             $this->act($this->worker, $t['id'], 'submit');
@@ -222,7 +238,7 @@ class TaskSystemTest extends TestCase
     {
         $this->actingAs($this->manager)->postJson('/api/tasks/templates/create', [
             'title' => 'تجهيز {event}', 'kind' => 'event', 'trigger' => 'match.created',
-            'assignee_id' => $this->worker->id, 'reviewer_id' => $this->reviewer->id,
+            'assignee_id' => $this->worker->id,
             'offset_minutes' => -120, 'duration_minutes' => 60,
         ])->assertCreated();
         $this->actingAs($this->manager)->postJson('/api/tasks/templates/create', [
@@ -240,6 +256,7 @@ class TaskSystemTest extends TestCase
         $this->assertSame('event', $task->source_type);
         $this->assertSame($kickoff->subHours(2)->format('Y-m-d H:i'), $task->due_at->format('Y-m-d H:i'));
         $this->assertSame($kickoff->subHours(3)->format('Y-m-d H:i'), $task->starts_at->format('Y-m-d H:i'));
-        $this->assertSame($this->reviewer->id, $task->reviewer_id);
+        $this->assertNull($task->reviewer_id);
+        $this->assertTrue($task->requires_approval);
     }
 }
