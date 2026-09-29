@@ -54,6 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/users/create', [UserController::class, 'store']);
     Route::post('/users/show', [UserController::class, 'show']);
     Route::post('/users/update', [UserController::class, 'update']);
+    Route::post('/users/password', [UserController::class, 'password']);
+    Route::post('/users/password/generate', [UserController::class, 'generatePassword']);
     Route::post('/users/delete', [UserController::class, 'destroy']);
 
     // Individuals Routes

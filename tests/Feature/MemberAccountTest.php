@@ -81,4 +81,60 @@ class MemberAccountTest extends TestCase
         $this->assertNotNull($old->fresh()->user_id);
         $this->artisan('members:create-accounts')->expectsOutput('Created 0 member account(s).');
     }
+
+    public function test_editing_the_user_updates_its_member(): void
+    {
+        $id = $this->createMember()->json('individual.id');
+        $userId = Individual::find($id)->user_id;
+
+        $this->actingAs($this->admin)->postJson('/api/users/update', ['id' => $userId, 'name' => 'كريم بن يوسف زروقي', 'email' => 'karim@club.dz'])->assertOk();
+        $member = Individual::find($id);
+        $this->assertSame('كريم', $member->first_name);
+        $this->assertSame('بن يوسف زروقي', $member->last_name);
+        $this->assertSame('karim@club.dz', $member->email);
+
+        // One word: only the first name changes
+        $this->actingAs($this->admin)->postJson('/api/users/update', ['id' => $userId, 'name' => 'سمير'])->assertOk();
+        $this->assertSame('سمير', Individual::find($id)->first_name);
+        $this->assertSame('بن يوسف زروقي', Individual::find($id)->last_name);
+
+        // And back: editing the member renames the account
+        $this->actingAs($this->admin)->postJson('/api/individuals/update', ['id' => $id, 'last_name' => 'زروقي'])->assertOk();
+        $this->assertSame('سمير زروقي', User::find($userId)->name);
+
+        // A user that is not a member is unaffected
+        $this->actingAs($this->admin)->postJson('/api/users/update', ['id' => $this->admin->id, 'name' => 'المدير'])->assertOk();
+        $this->assertSame(1, Individual::count());
+    }
+
+    public function test_managers_see_and_regenerate_passwords(): void
+    {
+        $response = $this->createMember();
+        $userId = $response->json('individual.user_id');
+        $first = $response->json('account.password');
+
+        // The member's random password can be shown later, to hand it over
+        $this->actingAs($this->admin)->postJson('/api/users/password', ['id' => $userId])->assertOk()->assertJsonPath('password', $first);
+
+        // A new one replaces it, and it is the one that logs in
+        $new = $this->actingAs($this->admin)->postJson('/api/users/password/generate', ['id' => $userId])->assertOk()->json('password');
+        $this->assertNotSame($first, $new);
+        $this->assertTrue(Hash::check($new, User::find($userId)->password));
+        $this->actingAs($this->admin)->postJson('/api/users/password', ['id' => $userId])->assertJsonPath('password', $new);
+
+        // A password typed in the users page is kept too
+        $this->actingAs($this->admin)->postJson('/api/users/update', ['id' => $userId, 'password' => 'Secret123'])->assertOk();
+        $this->actingAs($this->admin)->postJson('/api/users/password', ['id' => $userId])->assertJsonPath('password', 'Secret123');
+        $this->assertTrue(Hash::check('Secret123', User::find($userId)->password));
+
+        // Never in the users list, and not for users without the permission
+        $this->actingAs($this->admin)->getJson('/api/users')->assertOk()->assertJsonMissingPath('0.password_copy');
+        $this->assertStringNotContainsString('password_copy', $this->actingAs($this->admin)->getJson('/api/users')->getContent());
+        $plain = User::factory()->create(['role_id' => Role::create(['name' => 'staff', 'type' => 'custom', 'permissions' => json_encode(['usersAndRoles' => ['viewUsers' => true]])])->id]);
+        $this->actingAs($plain)->postJson('/api/users/password', ['id' => $userId])->assertForbidden();
+        $this->actingAs($plain)->postJson('/api/users/password/generate', ['id' => $userId])->assertForbidden();
+
+        // Accounts made before copies were kept: unknown
+        $this->actingAs($this->admin)->postJson('/api/users/password', ['id' => $this->admin->id])->assertJsonPath('password', null);
+    }
 }

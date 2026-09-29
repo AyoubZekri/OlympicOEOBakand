@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -25,9 +24,11 @@ class UserController extends Controller
             'profile_image' => 'nullable|string',
         ]);
 
-        $validated['password'] = Hash::make($validated['password']);
-
-        $user = User::create($validated);
+        $plain = $validated['password'];
+        unset($validated['password']);
+        $user = new User($validated);
+        $user->setPasswordWithCopy($plain);
+        $user->save();
 
         return response()->json(['message' => 'User created successfully', 'user' => $user], 201);
     }
@@ -52,15 +53,56 @@ class UserController extends Controller
             'profile_image' => 'nullable|string',
         ]);
 
-        if (isset($validated['password']) && $validated['password']) {
-            $validated['password'] = Hash::make($validated['password']);
-        } else {
-            unset($validated['password']);
+        $plain = $validated['password'] ?? null;
+        unset($validated['password']);
+        $user->fill($validated);
+        if ($plain) {
+            $user->setPasswordWithCopy($plain);
         }
-
-        $user->update($validated);
+        $user->save();
+        // A member's account: the member's name and email follow (the other direction is in IndividualController)
+        \App\Services\MemberAccount::syncFromUser($user);
 
         return response()->json(['message' => 'User updated successfully', 'user' => $user]);
+    }
+
+    /** The account's password in clear, for those allowed to edit users (null: set before copies were kept) */
+    public function password(Request $request)
+    {
+        if (!$this->canManageUsers($request->user())) {
+            return response()->json(['message' => 'لا تملك صلاحية عرض كلمات المرور'], 403);
+        }
+        $user = User::findOrFail($request->input('id'));
+
+        return response()->json(['status' => 'success', 'password' => $user->passwordCopy()]);
+    }
+
+    /** A new random password for the account, returned so it can be handed to its owner */
+    public function generatePassword(Request $request)
+    {
+        if (!$this->canManageUsers($request->user())) {
+            return response()->json(['message' => 'لا تملك صلاحية تغيير كلمات المرور'], 403);
+        }
+        $user = User::findOrFail($request->input('id'));
+        $plain = \Illuminate\Support\Str::password(10, symbols: false);
+        $user->setPasswordWithCopy($plain);
+        $user->save();
+
+        return response()->json(['status' => 'success', 'password' => $plain]);
+    }
+
+    /** Full-access roles, or roles with usersAndRoles.editUsers */
+    private function canManageUsers(?User $user): bool
+    {
+        $role = $user?->role;
+        if (!$role) {
+            return false;
+        }
+        if (strtolower((string) $role->type) === 'full') {
+            return true;
+        }
+        $permissions = is_string($role->permissions) ? json_decode($role->permissions, true) : (array) $role->permissions;
+        return ($permissions['usersAndRoles']['editUsers'] ?? false) === true;
     }
 
     public function destroy(Request $request)

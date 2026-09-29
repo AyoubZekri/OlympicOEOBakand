@@ -36,6 +36,7 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'password',
+        'password_copy',
         'remember_token',
     ];
 
@@ -50,6 +51,26 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /** Set the password (hashed for the login) and keep an encrypted copy the managers can show */
+    public function setPasswordWithCopy(string $plain): void
+    {
+        $this->password = \Illuminate\Support\Facades\Hash::make($plain);
+        $this->password_copy = \Illuminate\Support\Facades\Crypt::encryptString($plain);
+    }
+
+    /** The password in clear, or null when it was set before copies were kept */
+    public function passwordCopy(): ?string
+    {
+        if (!$this->password_copy) {
+            return null;
+        }
+        try {
+            return \Illuminate\Support\Facades\Crypt::decryptString($this->password_copy);
+        } catch (\Throwable) {
+            return null; // encrypted with another APP_KEY
+        }
     }
 
     public function role()

@@ -4,13 +4,12 @@ namespace App\Services;
 
 use App\Models\Individual;
 use App\Models\User;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
  * Every member has a user account (users table, linked by individuals.user_id):
  *   - email: the member's email, or a generated one when the member has none
- *   - password: always random (it can be changed later from the users page)
+ *   - password: always random, kept with an encrypted copy so it can be shown and handed over from the users page
  *   - no role
  * The account's name and email follow the member when the member is edited. Deleting a member keeps the account.
  */
@@ -56,17 +55,38 @@ class MemberAccount
             $email = self::generatedEmail($member);
         }
         $password = Str::password(12, symbols: false);
-        $user = User::create([
-            'name' => $name,
-            'email' => $email,
-            'password' => Hash::make($password),
-            'role_id' => null,
-        ]);
+        $user = new User(['name' => $name, 'email' => $email, 'role_id' => null]);
+        $user->setPasswordWithCopy($password);
+        $user->save();
 
         $member->user_id = $user->id;
         $member->saveQuietly();
 
         return ['user' => $user, 'password' => $password];
+    }
+
+    /**
+     * The other direction: a user account was edited, so its member follows.
+     * The account's single name is split: first word → first name, the rest → last name ("أحمد بن علي" → أحمد / بن علي).
+     * A generated email is not copied to the member (the member simply has no email).
+     */
+    public static function syncFromUser(User $user): void
+    {
+        $member = Individual::where('user_id', $user->id)->first();
+        if (!$member) {
+            return;
+        }
+
+        $words = preg_split('/\s+/u', trim((string) $user->name), -1, PREG_SPLIT_NO_EMPTY);
+        if ($words) {
+            $member->first_name = array_shift($words);
+            // A one-word name keeps the member's last name
+            if ($words) {
+                $member->last_name = implode(' ', $words);
+            }
+        }
+        $member->email = str_ends_with((string) $user->email, '@' . self::GENERATED_DOMAIN) ? null : $user->email;
+        $member->saveQuietly();
     }
 
     private static function generatedEmail(Individual $member): string
