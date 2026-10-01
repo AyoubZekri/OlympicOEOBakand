@@ -79,4 +79,36 @@ class TravelItineraryTest extends TestCase
     {
         $this->getJson('/api/travels')->assertUnauthorized();
     }
+
+    public function test_category_players_and_staff(): void
+    {
+        $team = \App\Models\Team::create(['name' => 'الأكابر']);
+        $p1 = Individual::create(['type' => 'player', 'first_name' => 'لاعب', 'last_name' => 'أول', 'team_id' => $team->id]);
+        $p2 = Individual::create(['type' => 'player', 'first_name' => 'لاعب', 'last_name' => 'ثاني', 'team_id' => $team->id]);
+        $coach = Individual::create(['type' => 'coach', 'first_name' => 'المدرب', 'last_name' => 'الأول']);
+        $kit = Individual::create(['type' => 'equipment_manager', 'first_name' => 'مسؤول', 'last_name' => 'العتاد']);
+
+        $travel = $this->actingAs($this->admin)->postJson('/api/travels/create', [
+            'destination' => 'سطيف', 'departure_time' => '2026-10-10 08:00', 'travel_reason' => 'تربص تحضيري', 'transport_method' => 'حافلة مستأجرة',
+            'team_id' => $team->id, 'player_ids' => [$p1->id, $p2->id, $p1->id], 'staff_ids' => [$coach->id, $kit->id],
+        ])->assertCreated()->json('data');
+
+        $this->assertSame('الأكابر', $travel['team_name']);
+        $this->assertSame(2, $travel['players_count']);
+        $this->assertSame(['لاعب أول', 'لاعب ثاني'], array_column($travel['players'], 'name'));
+        $this->assertSame(['المدرب الأول', 'مسؤول العتاد'], array_column($travel['staff'], 'name'));
+        $this->assertSame('المدرب الأول، مسؤول العتاد', $travel['staff_details']);
+        $this->assertSame('تربص تحضيري', $travel['travel_reason']);
+
+        $list = $this->actingAs($this->admin)->getJson('/api/travels')->json('data.0');
+        $this->assertSame([$p1->id, $p2->id], $list['player_ids']);
+
+        $options = $this->actingAs($this->admin)->getJson('/api/travels/options')->json('data');
+        $this->assertSame('الأكابر', $options['teams'][0]['name']);
+        $this->assertSame($team->id, collect($options['members'])->firstWhere('id', $p1->id)['team_id']);
+
+        $this->actingAs($this->admin)->postJson('/api/travels/create', [
+            'destination' => 'x', 'departure_time' => '2026-10-10 08:00', 'player_ids' => [9999],
+        ])->assertStatus(422);
+    }
 }

@@ -12,6 +12,16 @@ class TravelItinerary extends Model
     protected $table = 'travel_itineraries';
     protected $guarded = ['id'];
 
+    protected $casts = [
+        'staff_ids' => 'array',
+        'player_ids' => 'array',
+    ];
+
+    public function team()
+    {
+        return $this->belongsTo(Team::class);
+    }
+
     public function matchId()
     {
         return $this->belongsTo('App\Models\Matchs', 'match_id');

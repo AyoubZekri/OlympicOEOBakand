@@ -5,11 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Individual;
 use App\Models\Matchs;
+use App\Models\Team;
 use App\Models\TravelItinerary;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
-/** Team trips (travel_itineraries): where, why, how, who leads the delegation and the day's schedule */
+/** Team trips (travel_itineraries): where, why, how, the category with its chosen players and staff, and the day's schedule */
 class TravelItineraryController extends Controller
 {
     /** Schedule times of the trip day, in order */
@@ -17,19 +18,23 @@ class TravelItineraryController extends Controller
 
     public function index()
     {
-        $travels = TravelItinerary::with(['matchId.opponentClub:id,name', 'matchId.team:id,name', 'headOfDelegationId:id,first_name,last_name,type'])
+        $travels = TravelItinerary::with(['matchId.opponentClub:id,name', 'matchId.team:id,name', 'headOfDelegationId:id,first_name,last_name,type', 'team:id,name'])
             ->orderByDesc('departure_time')
             ->orderByDesc('id')
             ->get();
 
-        return response()->json(['status' => 'success', 'data' => $travels->map(fn ($t) => $this->present($t))]);
+        // Names of every chosen member, in one query
+        $ids = $travels->flatMap(fn ($t) => array_merge($t->staff_ids ?? [], $t->player_ids ?? []))->unique()->values();
+        $people = $this->people($ids->all());
+
+        return response()->json(['status' => 'success', 'data' => $travels->map(fn ($t) => $this->present($t, $people))]);
     }
 
     public function store(Request $request)
     {
         $travel = TravelItinerary::create($this->validated($request));
 
-        return response()->json(['status' => 'success', 'data' => $this->present($travel->fresh(['matchId.opponentClub', 'matchId.team', 'headOfDelegationId']))], 201);
+        return response()->json(['status' => 'success', 'data' => $this->presentOne($travel)], 201);
     }
 
     public function update(Request $request)
@@ -38,7 +43,7 @@ class TravelItineraryController extends Controller
         $travel = TravelItinerary::findOrFail($request->input('id'));
         $travel->update($this->validated($request, true));
 
-        return response()->json(['status' => 'success', 'data' => $this->present($travel->fresh(['matchId.opponentClub', 'matchId.team', 'headOfDelegationId']))]);
+        return response()->json(['status' => 'success', 'data' => $this->presentOne($travel)]);
     }
 
     public function destroy(Request $request)
@@ -49,20 +54,22 @@ class TravelItineraryController extends Controller
         return response()->json(['status' => 'success']);
     }
 
-    /** What the form picks from: the members (head of delegation) and the matches of the last month and to come */
+    /** What the form picks from: the members (with their category), the categories and the upcoming matches */
     public function options()
     {
-        $members = Individual::orderBy('first_name')->get(['id', 'first_name', 'last_name', 'type'])
-            ->map(fn ($m) => ['id' => $m->id, 'name' => trim("{$m->first_name} {$m->last_name}"), 'type' => $m->type]);
+        $members = Individual::orderBy('first_name')->get(['id', 'first_name', 'last_name', 'type', 'team_id'])
+            ->map(fn ($m) => ['id' => $m->id, 'name' => trim("{$m->first_name} {$m->last_name}"), 'type' => $m->type, 'team_id' => $m->team_id]);
+
+        $teams = Team::orderBy('name')->get(['id', 'name']);
 
         $matches = Matchs::with(['opponentClub:id,name', 'team:id,name'])
-            ->where('match_date', '>=', CarbonImmutable::today()->subDays(30))
+            ->where('match_date', '>=', CarbonImmutable::today())
             ->orderBy('match_date')
             ->limit(80)
             ->get()
             ->map(fn (Matchs $m) => $this->presentMatch($m));
 
-        return response()->json(['status' => 'success', 'data' => ['members' => $members, 'matches' => $matches]]);
+        return response()->json(['status' => 'success', 'data' => ['members' => $members, 'teams' => $teams, 'matches' => $matches]]);
     }
 
     /** $partial (update): the required fields are checked only when sent */
@@ -72,6 +79,11 @@ class TravelItineraryController extends Controller
         $required = $partial ? 'sometimes|required' : 'required';
         $data = $request->validate([
             'match_id' => 'nullable|exists:matches,id',
+            'team_id' => 'nullable|exists:teams,id',
+            'staff_ids' => 'nullable|array',
+            'staff_ids.*' => 'integer|exists:individuals,id',
+            'player_ids' => 'nullable|array',
+            'player_ids.*' => 'integer|exists:individuals,id',
             'destination' => "{$required}|string|max:255",
             'travel_reason' => 'nullable|string|max:255',
             'departure_location' => 'nullable|string|max:255',
@@ -97,7 +109,37 @@ class TravelItineraryController extends Controller
         ]);
 
         // Only the fields that were sent are changed on update
-        return array_intersect_key($data, $request->all());
+        $data = array_intersect_key($data, $request->all());
+
+        // The chosen players give the count; the chosen staff are also written as text (older screens read it)
+        if (array_key_exists('player_ids', $data)) {
+            $data['player_ids'] = array_values(array_unique(array_map('intval', $data['player_ids'] ?? [])));
+            $data['players_count'] = count($data['player_ids']);
+        }
+        if (array_key_exists('staff_ids', $data)) {
+            $data['staff_ids'] = array_values(array_unique(array_map('intval', $data['staff_ids'] ?? [])));
+            $data['staff_details'] = $data['staff_ids']
+                ? implode('، ', array_column($this->people($data['staff_ids']), 'name'))
+                : ($data['staff_details'] ?? null);
+        }
+        return $data;
+    }
+
+    /** id => [id, name, type] of the given members */
+    private function people(array $ids): array
+    {
+        if (!$ids) {
+            return [];
+        }
+        return Individual::whereIn('id', $ids)->get(['id', 'first_name', 'last_name', 'type'])
+            ->mapWithKeys(fn ($m) => [$m->id => ['id' => $m->id, 'name' => trim("{$m->first_name} {$m->last_name}"), 'type' => $m->type]])
+            ->all();
+    }
+
+    private function presentOne(TravelItinerary $travel): array
+    {
+        $travel = $travel->fresh(['matchId.opponentClub', 'matchId.team', 'headOfDelegationId', 'team']);
+        return $this->present($travel, $this->people(array_merge($travel->staff_ids ?? [], $travel->player_ids ?? [])));
     }
 
     private function presentMatch(Matchs $m): array
@@ -108,19 +150,27 @@ class TravelItineraryController extends Controller
             'title' => $opponent ? "مباراة ضد {$opponent}" : ($m->match_title ?: 'مباراة'),
             'at' => $m->match_date ? CarbonImmutable::parse($m->match_date)->format('Y-m-d H:i') : null,
             'place' => $m->location,
+            'team_id' => $m->team_id,
             'team' => $m->team?->name,
             'competition' => $m->competition,
         ];
     }
 
-    private function present(TravelItinerary $t): array
+    private function present(TravelItinerary $t, array $people = []): array
     {
+        $pick = fn (?array $ids) => array_values(array_filter(array_map(fn ($id) => $people[$id] ?? null, $ids ?? [])));
         $head = $t->headOfDelegationId;
         $match = $t->matchId;
         $data = [
             'id' => $t->id,
             'match_id' => $t->match_id,
             'match' => $match ? $this->presentMatch($match) : null,
+            'team_id' => $t->team_id,
+            'team_name' => $t->team?->name,
+            'staff_ids' => $t->staff_ids ?? [],
+            'staff' => $pick($t->staff_ids),
+            'player_ids' => $t->player_ids ?? [],
+            'players' => $pick($t->player_ids),
             'destination' => $t->destination,
             'travel_reason' => $t->travel_reason,
             'departure_location' => $t->departure_location,
