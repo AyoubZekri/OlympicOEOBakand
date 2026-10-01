@@ -170,6 +170,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/player-clearance', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'updateOrCreate']);
     Route::delete('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'destroy']);
 
+    // Travels (travel_itineraries)
+    Route::get('/travels', [\App\Http\Controllers\Api\TravelItineraryController::class, 'index']);
+    Route::get('/travels/options', [\App\Http\Controllers\Api\TravelItineraryController::class, 'options']);
+    Route::post('/travels/create', [\App\Http\Controllers\Api\TravelItineraryController::class, 'store']);
+    Route::post('/travels/update', [\App\Http\Controllers\Api\TravelItineraryController::class, 'update']);
+    Route::post('/travels/delete', [\App\Http\Controllers\Api\TravelItineraryController::class, 'destroy']);
+
     // Tasks
     Route::get('/tasks', [\App\Http\Controllers\Api\TaskController::class, 'index']);
     Route::get('/tasks/stats', [\App\Http\Controllers\Api\TaskController::class, 'stats']);
