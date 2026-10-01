@@ -15,7 +15,8 @@ class PaymentController extends Controller
 {
     public function index()
     {
-        $payments = PaymentExpense::orderBy('created_at', 'desc')->get();
+        // Purchases on credit not paid are not payments: they have their own list (CreditPurchaseController)
+        $payments = PaymentExpense::where('is_credit', false)->orderBy('created_at', 'desc')->get();
         
         $formatted = $payments->map(function($payment) {
             return [
@@ -34,6 +35,8 @@ class PaymentController extends Controller
                 'notes' => $payment->notes,
                 'fund_id' => (string) $payment->fund_id,
                 "transactionType" => $payment->transaction_type,
+                // Set when this expense paid (part of) a purchase on credit
+                'creditId' => $payment->credit_id ? (string) $payment->credit_id : null,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
         });

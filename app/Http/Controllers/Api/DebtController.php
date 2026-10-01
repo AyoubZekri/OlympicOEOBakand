@@ -227,7 +227,8 @@ class DebtController extends Controller
         $kind = $debt ? $debt->kind : $request->input('kind');
 
         $data = $request->validate([
-            'kind' => $debt ? 'nullable' : 'required|in:loan,purchase',
+            // Purchases on credit are in the payments & expenses table (CreditPurchaseController)
+            'kind' => $debt ? 'nullable' : 'required|in:loan',
             'creditor' => 'required|string|max:255',
             'creditor_phone' => 'nullable|string|max:50',
             'title' => 'nullable|string|max:255',

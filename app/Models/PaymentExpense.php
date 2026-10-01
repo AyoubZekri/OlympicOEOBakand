@@ -24,6 +24,16 @@ class PaymentExpense extends Model
         'receipt_file',
         'fund_id',
         'contract_id',
+        // Purchase on credit (is_credit) and the payments made on it (credit_id)
+        'is_credit',
+        'credit_id',
+        'creditor',
+        'creditor_phone',
+        'due_date',
+    ];
+
+    protected $casts = [
+        'is_credit' => 'boolean',
     ];
 
     public function individual()
@@ -44,6 +54,22 @@ class PaymentExpense extends Model
     public function fund()
     {
         return $this->belongsTo(Fund::class, 'fund_id');
+    }
+
+    /** A purchase on credit: the expenses that paid it */
+    public function creditPayments()
+    {
+        return $this->hasMany(PaymentExpense::class, 'credit_id')->orderByDesc('Payments_data')->orderByDesc('id');
+    }
+
+    public function creditPaid(): float
+    {
+        return round((float) PaymentExpense::where('credit_id', $this->id)->sum('amount'), 2);
+    }
+
+    public function creditRemaining(): float
+    {
+        return max(0, round((float) $this->amount - $this->creditPaid(), 2));
     }
 }
 

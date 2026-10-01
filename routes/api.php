@@ -98,6 +98,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/delete', [\App\Http\Controllers\Api\PaymentController::class, 'destroy']);
     Route::post('/payments/return', [\App\Http\Controllers\Api\PaymentController::class, 'returnPayment']);
 
+    // Purchases on credit (in the payments & expenses table) and their payments
+    Route::get('/payments/credit', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'index']);
+    Route::post('/payments/credit/create', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'store']);
+    Route::post('/payments/credit/update', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'update']);
+    Route::post('/payments/credit/delete', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'destroy']);
+    Route::post('/payments/credit/pay', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'pay']);
+    Route::post('/payments/credit/payments/delete', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'destroyPayment']);
+
     // Equipments Routes
     Route::get('/equipments', [\App\Http\Controllers\Api\EquipmentController::class, 'index']);
     Route::post('/equipments/create', [\App\Http\Controllers\Api\EquipmentController::class, 'store']);
@@ -177,7 +185,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/travels/update', [\App\Http\Controllers\Api\TravelItineraryController::class, 'update']);
     Route::post('/travels/delete', [\App\Http\Controllers\Api\TravelItineraryController::class, 'destroy']);
 
-    // Debts: loans put into a fund, and purchases not paid yet, with their repayments
+    // Debts: loans put into a fund, with their repayments
     Route::get('/debts', [\App\Http\Controllers\Api\DebtController::class, 'index']);
     Route::post('/debts/create', [\App\Http\Controllers\Api\DebtController::class, 'store']);
     Route::post('/debts/update', [\App\Http\Controllers\Api\DebtController::class, 'update']);

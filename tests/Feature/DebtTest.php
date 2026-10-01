@@ -98,52 +98,14 @@ class DebtTest extends TestCase
         $this->assertSame(0, Debt::count());
     }
 
-    public function test_a_purchase_is_an_expense_only_when_paid(): void
-    {
-        $debt = $this->actingAs($this->admin)->postJson('/api/debts/create', [
-            'kind' => 'purchase',
-            'creditor' => 'محل الرياضة',
-            'title' => 'ملابس الفريق',
-            'expense_nature' => 'تجهيزات',
-            'amount' => 90000,
-            'debt_date' => '2026-10-01',
-            'due_date' => '2026-11-01',
-        ])->assertCreated()->json('data');
-
-        // Nothing paid, nothing moved
-        $this->assertSame(0, PaymentExpense::count());
-        $this->assertSame(100000.0, $this->balance($this->cash));
-
-        $after = $this->postJson('/api/debts/repay', ['debt_id' => $debt['id'], 'amount' => 45000, 'paid_on' => '2026-10-10', 'fund_id' => $this->cash->id, 'payment_method' => 'نقدا'])
-            ->json('data');
-        $this->assertEquals(45000, $after['remaining']);
-        $this->assertSame(55000.0, $this->balance($this->cash));
-        $payment = PaymentExpense::first();
-        $this->assertSame('تجهيزات', $payment->amount_Nature);
-        $this->assertSame('مصروف', $payment->transaction_type);
-        $this->assertSame((int) $this->cash->id, (int) $payment->fund_id);
-        $this->assertStringContainsString('محل الرياضة', $payment->Occasion_Reason_numper);
-        $this->assertDatabaseHas('fund_transactions', ['type' => 'سحب', 'amount' => 45000, 'payment_expenses_id' => $payment->id]);
-
-        // Paid outside the funds: still an expense, no fund moves
-        $this->postJson('/api/debts/repay', ['debt_id' => $debt['id'], 'amount' => 5000, 'paid_on' => '2026-10-11'])->assertCreated();
-        $this->assertSame(2, PaymentExpense::count());
-        $this->assertSame(55000.0, $this->balance($this->cash));
-
-        // Deleting the expense from the payments page cancels that repayment
-        $payment->delete();
-        $this->assertEquals(85000, $this->getJson('/api/debts')->json('data.0.remaining'));
-
-        // Deleting the debt removes its remaining expense
-        $this->postJson('/api/debts/delete', ['id' => $debt['id']])->assertOk();
-        $this->assertSame(0, PaymentExpense::count());
-    }
-
     public function test_validation(): void
     {
         $this->actingAs($this->admin)->postJson('/api/debts/create', ['kind' => 'loan', 'creditor' => 'x', 'amount' => 10, 'debt_date' => '2026-10-01'])
             ->assertStatus(422)->assertJsonValidationErrors('fund_id');
-        $this->postJson('/api/debts/create', ['kind' => 'purchase', 'creditor' => '', 'amount' => 0, 'debt_date' => '2026-10-01'])
+        $this->postJson('/api/debts/create', ['kind' => 'loan', 'creditor' => '', 'amount' => 0, 'debt_date' => '2026-10-01', 'fund_id' => $this->cash->id])
             ->assertStatus(422)->assertJsonValidationErrors(['creditor', 'amount']);
+        // Purchases on credit are recorded in the payments & expenses table
+        $this->postJson('/api/debts/create', ['kind' => 'purchase', 'creditor' => 'x', 'amount' => 10, 'debt_date' => '2026-10-01'])
+            ->assertStatus(422)->assertJsonValidationErrors('kind');
     }
 }
