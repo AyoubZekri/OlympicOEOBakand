@@ -100,9 +100,10 @@ class FundTransactionController extends Controller
         if ($transaction) {
             $fund = Fund::find($transaction->fund_id);
             if ($fund) {
-                if ($transaction->type === 'إيداع') {
+                // استلاف (a loan received) / تسديد دين (a loan paid back) are written by the debts
+                if ($transaction->type === 'إيداع' || $transaction->type === 'استلاف') {
                     $fund->current_balance -= $transaction->amount;
-                } elseif ($transaction->type === 'سحب' || $transaction->type === 'تحويل') {
+                } elseif ($transaction->type === 'سحب' || $transaction->type === 'تحويل' || $transaction->type === 'تسديد دين') {
                     $fund->current_balance += $transaction->amount;
                 }
                 $fund->save();

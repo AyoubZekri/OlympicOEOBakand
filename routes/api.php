@@ -177,6 +177,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/travels/update', [\App\Http\Controllers\Api\TravelItineraryController::class, 'update']);
     Route::post('/travels/delete', [\App\Http\Controllers\Api\TravelItineraryController::class, 'destroy']);
 
+    // Debts: loans put into a fund, and purchases not paid yet, with their repayments
+    Route::get('/debts', [\App\Http\Controllers\Api\DebtController::class, 'index']);
+    Route::post('/debts/create', [\App\Http\Controllers\Api\DebtController::class, 'store']);
+    Route::post('/debts/update', [\App\Http\Controllers\Api\DebtController::class, 'update']);
+    Route::post('/debts/delete', [\App\Http\Controllers\Api\DebtController::class, 'destroy']);
+    Route::post('/debts/repay', [\App\Http\Controllers\Api\DebtController::class, 'repay']);
+    Route::post('/debts/repayments/delete', [\App\Http\Controllers\Api\DebtController::class, 'destroyRepayment']);
+
     // Tasks
     Route::get('/tasks', [\App\Http\Controllers\Api\TaskController::class, 'index']);
     Route::get('/tasks/stats', [\App\Http\Controllers\Api\TaskController::class, 'stats']);
