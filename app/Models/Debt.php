@@ -53,6 +53,7 @@ class Debt extends Model
 
     public function repaid(): float
     {
-        return round((float) $this->repayments()->sum('amount'), 2);
+        // A plain sum, without the relation's ORDER BY (MySQL's ONLY_FULL_GROUP_BY may refuse an ordered aggregate)
+        return round((float) DebtRepayment::where('debt_id', $this->id)->sum('amount'), 2);
     }
 }
