@@ -8,16 +8,13 @@ use Carbon\CarbonImmutable;
 
 /**
  * Creates tasks from templates:
- *  - periodic templates: one task per RRULE occurrence, created LEAD_DAYS days before its date
+ *  - periodic templates: the next RRULE occurrence only, created LEAD_DAYS days before its date
  *    (run by the tasks:generate-periodic command, and right after a template is saved),
  *  - event templates: tasks for a system event (a match, a training session, a meeting is created).
  * Each occurrence / event creates its task only once.
  */
 class TaskGenerator
 {
-    /** Most missed occurrences created per template in one run (after the server was down) */
-    private const MAX_PER_RUN = 31;
-
     /** A periodic task is created this many days before its date, so it shows up in advance */
     public const LEAD_DAYS = 3;
 
@@ -33,7 +30,10 @@ class TaskGenerator
         return $created;
     }
 
-    /** One periodic template: create its occurrences up to now + LEAD_DAYS and move next_run_at forward */
+    /**
+     * One periodic template (the "base" task): create its next occurrence, one at a time, and move next_run_at forward.
+     * There is never more than one occurrence waiting to start; past occurrences are not created.
+     */
     public static function runTemplate(TaskTemplate $template, ?CarbonImmutable $now = null): int
     {
         $now ??= CarbonImmutable::now();
@@ -51,15 +51,19 @@ class TaskGenerator
         $next = $template->next_run_at
             ? CarbonImmutable::parse($template->next_run_at)
             : $rule->nextAfter($anchor->subSecond());
-        $horizon = $now->addDays(self::LEAD_DAYS);
 
+        // Occurrences whose time is already over are skipped, not created late
+        for ($i = 0; $next && $next->addMinutes($template->duration_minutes)->lessThan($now) && $i < 2000; $i++) {
+            $next = $rule->nextAfter($next);
+        }
+
+        // Only the next occurrence: it is created (LEAD_DAYS before its date) once the previous one has started
         $created = 0;
-        $count = 0;
-        while ($next && $next->lessThanOrEqualTo($horizon) && $count < self::MAX_PER_RUN) {
+        $waiting = Task::where('template_id', $template->id)->where('status', 'assigned')->where('starts_at', '>', $now)->exists();
+        if ($next && !$waiting && $next->lessThanOrEqualTo($now->addDays(self::LEAD_DAYS))) {
             if (self::createFromTemplate($template, $next, 'periodic', null)) {
-                $created++;
+                $created = 1;
             }
-            $count++;
             $next = $rule->nextAfter($next);
         }
 

@@ -216,61 +216,72 @@ class TaskSystemTest extends TestCase
         $this->assertFalse(RecurrenceRule::isValid('FREQ=WEEKLY;BYDAY=XX'));
     }
 
-    public function test_periodic_tasks_are_created_three_days_ahead_once_each(): void
+    public function test_a_periodic_task_creates_only_its_next_occurrence(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-09-28 07:00'));
-        // Saving creates the occurrences of the next 3 days right away (28, 29, 30 at 08:00)
+        // Saving creates the next occurrence (today 08:00), and only that one
         $this->actingAs($this->manager)->postJson('/api/tasks/templates/create', [
             'title' => 'تقرير يومي', 'kind' => 'periodic', 'assignee_id' => $this->worker->id,
             'requires_approval' => false, 'rrule' => 'FREQ=DAILY;BYHOUR=8;BYMINUTE=0', 'duration_minutes' => 120,
-        ])->assertCreated()->assertJsonPath('data.next_run_at', '2026-10-01 08:00');
+        ])->assertCreated()->assertJsonPath('data.next_run_at', '2026-09-29 08:00');
+        $this->assertSame(1, Task::count());
+        // While it has not started, the next one is not created
+        $this->assertSame(0, TaskGenerator::runPeriodic(CarbonImmutable::now()));
+
+        // Once its time has come, the next one (tomorrow) is created, and nothing more
+        $this->travelTo(CarbonImmutable::parse('2026-09-28 08:30'));
+        $this->assertSame(1, TaskGenerator::runPeriodic(CarbonImmutable::now()));
+        $this->assertSame(0, TaskGenerator::runPeriodic(CarbonImmutable::now()));
+        $this->assertSame('2026-09-29 08:00', Task::orderByDesc('starts_at')->first()->starts_at->format('Y-m-d H:i'));
+
+        // After a long stop, missed occurrences are skipped: only the next one is created
+        $this->travelTo(CarbonImmutable::parse('2026-10-05 09:00'));
+        $this->assertSame(1, TaskGenerator::runPeriodic(CarbonImmutable::now()));
         $this->assertSame(3, Task::count());
-        $this->assertSame(0, TaskGenerator::runPeriodic(CarbonImmutable::now()));
-
-        $this->travelTo(CarbonImmutable::parse('2026-09-30 09:00'));
-        $this->assertSame(3, TaskGenerator::runPeriodic(CarbonImmutable::now())); // Oct 1, 2, 3
-        $this->assertSame(0, TaskGenerator::runPeriodic(CarbonImmutable::now()));
-
-        $task = Task::orderBy('starts_at')->first();
-        $this->assertSame('2026-09-28 08:00', $task->starts_at->format('Y-m-d H:i'));
-        $this->assertSame('2026-09-28 10:00', $task->due_at->format('Y-m-d H:i'));
-        $this->assertSame('2026-10-03 08:00', Task::orderByDesc('starts_at')->first()->starts_at->format('Y-m-d H:i'));
-        $this->assertSame('2026-10-04 08:00', TaskTemplate::first()->next_run_at->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-05 08:00', Task::orderByDesc('starts_at')->first()->starts_at->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-05 10:00', Task::orderByDesc('starts_at')->first()->due_at->format('Y-m-d H:i'));
 
         $this->artisan('tasks:generate-periodic')->assertSuccessful();
     }
 
-    public function test_a_periodic_task_can_be_stopped_or_deleted_from_its_task(): void
+    public function test_the_base_periodic_task_is_listed_edited_stopped_and_deleted(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-09-28 07:00'));
         $template = $this->actingAs($this->manager)->postJson('/api/tasks/templates/create', [
             'title' => 'تقرير', 'kind' => 'periodic', 'assignee_id' => $this->worker->id,
             'requires_approval' => false, 'rrule' => 'FREQ=DAILY;BYHOUR=8;BYMINUTE=0', 'duration_minutes' => 120,
         ])->json('data');
-        $first = Task::orderBy('starts_at')->first();
+        $first = Task::first();
 
-        // The task shows the series it comes from
-        $this->actingAs($this->worker)->getJson("/api/tasks/{$first->id}")
-            ->assertJsonPath('data.template.id', $template['id'])
-            ->assertJsonPath('data.template.active', true)
-            ->assertJsonPath('data.template.can_manage', false);
+        // The assignee sees the base task (without managing it); a stranger does not
+        $this->actingAs($this->worker)->getJson('/api/tasks/templates')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.can_manage', false);
+        $plain = User::factory()->create(['role_id' => Role::create(['name' => 'p', 'type' => 'custom', 'permissions' => json_encode(['_v' => 2, 'tasks' => ['view' => true]])])->id]);
+        $this->actingAs($plain)->getJson('/api/tasks/templates')->assertOk()->assertJsonCount(0, 'data');
         $this->actingAs($this->worker)->postJson('/api/tasks/templates/toggle', ['id' => $template['id'], 'active' => false])->assertForbidden();
+        $this->actingAs($this->worker)->postJson('/api/tasks/templates/update', ['id' => $template['id']] + $template)->assertForbidden();
 
-        // The worker starts today's task; stopping withdraws only the upcoming unstarted ones
-        $this->travelTo(CarbonImmutable::parse('2026-09-28 09:00'));
-        $this->act($this->worker, $first->id, 'start');
+        // The occurrence shows the base task it comes from
+        $this->actingAs($this->worker)->getJson("/api/tasks/{$first->id}")->assertJsonPath('data.template.id', $template['id']);
+
+        // Stopping withdraws the waiting occurrence
         $this->actingAs($this->manager)->postJson('/api/tasks/templates/toggle', ['id' => $template['id'], 'active' => false])
-            ->assertOk()->assertJsonPath('withdrawn', 2)->assertJsonPath('data.active', false);
-        $this->assertSame(1, Task::count());
+            ->assertOk()->assertJsonPath('withdrawn', 1)->assertJsonPath('data.active', false);
+        $this->assertSame(0, Task::count());
         $this->assertSame(0, TaskGenerator::runPeriodic(CarbonImmutable::now()->addDays(5)));
 
-        // Restart, then delete the series: the started task stays, without the link
+        // Restarting creates the next occurrence again (withdrawn ones are not brought back)
+        $this->travelTo(CarbonImmutable::parse('2026-09-28 09:00'));
         $this->actingAs($this->manager)->postJson('/api/tasks/templates/toggle', ['id' => $template['id'], 'active' => true])->assertOk();
-        // Withdrawn occurrences stay in the archive; only Oct 1 is new
-        $this->assertSame(2, Task::count());
+        $this->assertSame('2026-09-29 08:00', Task::first()->starts_at->format('Y-m-d H:i'));
+
+        // Editing the base task (its title) is used by the next occurrences
+        $this->actingAs($this->manager)->postJson('/api/tasks/templates/update', ['id' => $template['id'], 'title' => 'تقرير العتاد'] + $template)->assertOk();
+        $this->assertSame('تقرير العتاد', \App\Models\TaskTemplate::first()->title);
+
+        // Deleting it withdraws the waiting occurrence
         $this->actingAs($this->manager)->postJson('/api/tasks/templates/delete', ['id' => $template['id']])->assertOk()->assertJsonPath('withdrawn', 1);
-        $this->assertSame(1, Task::count());
-        $this->assertNull($first->fresh()->template_id);
+        $this->assertSame(0, \App\Models\TaskTemplate::count());
     }
 
     public function test_event_templates_create_tasks_once_per_event(): void

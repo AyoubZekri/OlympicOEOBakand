@@ -16,15 +16,21 @@ use Illuminate\Http\Request;
 /** Templates that create tasks: periodic (RRULE) or linked to a system event (match, training, meeting) */
 class TaskTemplateController extends Controller
 {
+    /**
+     * The base tasks (periodic / automatic). With the templates permission: all of them;
+     * otherwise the ones the user created or is assigned, so everyone sees their periodic tasks.
+     */
     public function index(Request $request)
     {
-        if (!TaskPermissions::can($request->user(), 'templates')) {
-            return response()->json(['message' => 'لا تملك صلاحية قوالب المهام'], 403);
-        }
+        $user = $request->user();
+        $templates = TaskTemplate::with(['assignee:id,name'])->withCount('tasks')
+            ->when(!TaskPermissions::can($user, 'templates'), fn ($q) => $q->where(fn ($w) => $w->where('created_by', $user->id)->orWhere('assignee_id', $user->id)))
+            ->orderByDesc('active')
+            ->orderBy('next_run_at')
+            ->orderByDesc('id')
+            ->get();
 
-        $templates = TaskTemplate::with(['assignee:id,name'])->withCount('tasks')->orderByDesc('id')->get();
-
-        return response()->json(['status' => 'success', 'data' => $templates->map(fn ($t) => $this->present($t))]);
+        return response()->json(['status' => 'success', 'data' => $templates->map(fn ($t) => $this->present($t) + ['can_manage' => self::canManage($user, $t)])]);
     }
 
     public function store(Request $request)
@@ -44,11 +50,10 @@ class TaskTemplateController extends Controller
 
     public function update(Request $request)
     {
-        if (!TaskPermissions::can($request->user(), 'templates')) {
-            return response()->json(['message' => 'لا تملك صلاحية قوالب المهام'], 403);
-        }
-
         $template = TaskTemplate::findOrFail($request->input('id'));
+        if (!self::canManage($request->user(), $template)) {
+            return response()->json(['message' => 'لا تملك صلاحية تعديل هذه المهمة الدورية'], 403);
+        }
         $before = [$template->rrule, optional($template->starts_on)->toDateTimeString(), $template->active];
         $template->fill($this->validated($request));
 
