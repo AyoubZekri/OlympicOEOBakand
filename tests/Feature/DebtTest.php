@@ -52,7 +52,11 @@ class DebtTest extends TestCase
         $this->assertSame(400000.0, $this->balance($this->bank));
         $this->assertSame('partial', $after['status']);
         $this->assertEquals(100000, $after['remaining']);
-        $this->assertDatabaseHas('fund_transactions', ['fund_id' => $this->bank->id, 'type' => 'تسديد دين', 'amount' => 100000]);
+        // Not a fund operation: the balance moves, and the paid value is in the debt's own column
+        $this->assertDatabaseMissing('fund_transactions', ['type' => 'تسديد دين']);
+        $this->assertSame(1, FundTransaction::count());
+        $this->assertEquals(100000, Debt::find($debt['id'])->paid_amount);
+        $this->assertEquals(100000, $after['paid_amount']);
         // A loan repayment is not an expense
         $this->assertSame(0, PaymentExpense::count());
 

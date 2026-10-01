@@ -16,7 +16,8 @@ use Illuminate\Validation\ValidationException;
 /**
  * The club's debts.
  * - loan: money borrowed from someone, put into a fund (a "استلاف" transaction raises its balance);
- *   a repayment takes money out of a fund ("تسديد دين").
+ *   a repayment lowers the chosen fund's balance directly: it is not a fund operation.
+ *   What has been paid is kept in the debt's paid_amount column.
  * - purchase: something bought and not paid yet; nothing moves until it is paid. A repayment is a real expense:
  *   it is recorded in the payments & expenses table (and withdrawn from the fund it is paid from).
  * Any part of a debt can be paid, as many times as needed, up to what is left.
@@ -44,6 +45,7 @@ class DebtController extends Controller
             ->orderByDesc('debt_date')
             ->orderByDesc('id')
             ->get();
+        $debts->each(fn (Debt $d) => $d->syncPaid());
 
         return response()->json(['status' => 'success', 'data' => $debts->map(fn (Debt $d) => $this->present($d))]);
     }
@@ -71,6 +73,7 @@ class DebtController extends Controller
         $debt = Debt::findOrFail($request->input('id'));
         $data = $this->validated($request, $debt);
 
+        $debt->syncPaid();
         $repaid = $debt->repaid();
         if ($data['amount'] + 0.005 < $repaid) {
             throw ValidationException::withMessages(['amount' => 'المبلغ أقل مما تم تسديده (' . number_format($repaid, 2, ',', '.') . ' د.ج)']);
@@ -135,15 +138,18 @@ class DebtController extends Controller
         ], self::MESSAGES);
 
         $debt = Debt::findOrFail($data['debt_id']);
-        $left = round((float) $debt->amount - $debt->repaid(), 2);
-        if ($left <= 0) {
-            throw ValidationException::withMessages(['amount' => 'هذا الدين مسدد بالكامل']);
-        }
-        if ($data['amount'] > $left + 0.005) {
-            throw ValidationException::withMessages(['amount' => 'المبلغ أكبر من الباقي (' . number_format($left, 2, ',', '.') . ' د.ج)']);
-        }
+        $debt->syncPaid();
 
         DB::transaction(function () use ($debt, $data) {
+            $debt = Debt::whereKey($debt->id)->lockForUpdate()->first();
+            $left = $debt->remaining();
+            if ($left <= 0) {
+                throw ValidationException::withMessages(['amount' => 'هذا الدين مسدد بالكامل']);
+            }
+            if ($data['amount'] > $left + 0.005) {
+                throw ValidationException::withMessages(['amount' => 'المبلغ أكبر من الباقي (' . number_format($left, 2, ',', '.') . ' د.ج)']);
+            }
+
             $amount = round((float) $data['amount'], 2);
             $fundId = $data['fund_id'] ?? null;
             $repayment = new DebtRepayment([
@@ -157,17 +163,8 @@ class DebtController extends Controller
             ]);
 
             if ($debt->isLoan()) {
-                if ($fundId) {
-                    $this->moveFund($fundId, -$amount);
-                    $repayment->fund_transaction_id = FundTransaction::create([
-                        'fund_id' => $fundId,
-                        'type' => self::TX_REPAY,
-                        'amount' => $amount,
-                        'transaction_date' => $data['paid_on'],
-                        'description' => 'تسديد دين - ' . $debt->creditor,
-                        'created_by' => auth()->id(),
-                    ])->id;
-                }
+                // Paying back the lender: the money leaves the fund, without a fund operation
+                $this->moveFund($fundId, -$amount);
             } else {
                 // A purchase paid: an expense in the payments & expenses table
                 $nature = $debt->expense_nature ?: 'اخرى';
@@ -201,6 +198,7 @@ class DebtController extends Controller
             }
 
             $repayment->save();
+            $debt->increment('paid_amount', $amount);
         });
 
         return response()->json(['status' => 'success', 'data' => $this->presentOne($debt->fresh())], 201);
@@ -213,7 +211,10 @@ class DebtController extends Controller
         $repayment = DebtRepayment::findOrFail($request->input('id'));
         $debt = $repayment->debt;
 
-        DB::transaction(fn () => $this->cancelRepayment($repayment));
+        DB::transaction(function () use ($repayment, $debt) {
+            $this->cancelRepayment($repayment);
+            $debt->syncPaid();
+        });
 
         return response()->json(['status' => 'success', 'data' => $this->presentOne($debt->fresh())]);
     }
@@ -256,6 +257,9 @@ class DebtController extends Controller
         $payment = $r->paymentExpense;
         if ($tx) {
             $this->moveFund($tx->fund_id, (float) $tx->amount);
+        } elseif ($r->fund_id && $r->debt?->isLoan()) {
+            // A loan repayment lowered its fund directly: put the money back
+            $this->moveFund($r->fund_id, (float) $r->amount);
         }
         $r->delete();
         $tx?->delete();
@@ -267,11 +271,9 @@ class DebtController extends Controller
         if (! $fundId || ! $delta) {
             return;
         }
-        $fund = Fund::find($fundId);
-        if ($fund) {
-            $fund->current_balance = round((float) $fund->current_balance + $delta, 2);
-            $fund->save();
-        }
+        // One UPDATE on the column, so nothing else can overwrite it in between
+        $query = Fund::whereKey($fundId);
+        $delta > 0 ? $query->increment('current_balance', $delta) : $query->decrement('current_balance', -$delta);
     }
 
     private function loanDescription(Debt $debt): string
@@ -298,8 +300,8 @@ class DebtController extends Controller
 
     private function present(Debt $d): array
     {
-        $repaid = round((float) $d->repayments->sum('amount'), 2);
-        $remaining = max(0, round((float) $d->amount - $repaid, 2));
+        $repaid = $d->repaid();
+        $remaining = $d->remaining();
         $status = $remaining <= 0 ? 'paid' : ($repaid > 0 ? 'partial' : 'open');
 
         return [
@@ -309,6 +311,7 @@ class DebtController extends Controller
             'creditor_phone' => $d->creditor_phone,
             'title' => $d->title,
             'amount' => (float) $d->amount,
+            'paid_amount' => $repaid,
             'debt_date' => $d->debt_date?->format('Y-m-d'),
             'due_date' => $d->due_date?->format('Y-m-d'),
             'fund_id' => $d->fund_id,

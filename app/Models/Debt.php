@@ -16,6 +16,7 @@ class Debt extends Model
         'creditor_phone',
         'title',
         'amount',
+        'paid_amount',
         'debt_date',
         'due_date',
         'fund_id',
@@ -27,6 +28,7 @@ class Debt extends Model
 
     protected $casts = [
         'amount' => 'float',
+        'paid_amount' => 'float',
         'debt_date' => 'date',
         'due_date' => 'date',
     ];
@@ -51,9 +53,26 @@ class Debt extends Model
         return $this->kind === self::LOAN;
     }
 
+    /** What has been paid: the paid_amount column */
     public function repaid(): float
     {
-        // A plain sum, without the relation's ORDER BY (MySQL's ONLY_FULL_GROUP_BY may refuse an ordered aggregate)
-        return round((float) DebtRepayment::where('debt_id', $this->id)->sum('amount'), 2);
+        return round((float) $this->paid_amount, 2);
+    }
+
+    public function remaining(): float
+    {
+        return max(0, round((float) $this->amount - (float) $this->paid_amount, 2));
+    }
+
+    /**
+     * paid_amount = the sum of the repayments. Called after every change; also corrects the column when a
+     * repayment disappeared with its expense (an expense deleted from the payments page).
+     */
+    public function syncPaid(): void
+    {
+        $paid = round((float) DebtRepayment::where('debt_id', $this->id)->sum('amount'), 2);
+        if (abs($paid - (float) $this->paid_amount) > 0.001) {
+            $this->forceFill(['paid_amount' => $paid])->saveQuietly();
+        }
     }
 }
