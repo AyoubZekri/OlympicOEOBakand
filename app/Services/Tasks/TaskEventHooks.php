@@ -5,11 +5,12 @@ namespace App\Services\Tasks;
 use App\Models\Matchs;
 use App\Models\Meeting;
 use App\Models\TrainingSession;
+use App\Models\TravelItinerary;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 
 /**
- * System events that create tasks (event templates): a match, a training session or a meeting is created.
+ * System events that create tasks (event templates): a match, a training session, a meeting or a travel is created.
  * A problem while creating the tasks is logged and never stops the event itself from being saved.
  */
 class TaskEventHooks
@@ -28,6 +29,10 @@ class TaskEventHooks
 
         Meeting::created(function (Meeting $meeting) {
             self::fire('meeting.created', "meeting:{$meeting->id}", self::at($meeting->date, $meeting->time), 'اجتماع: ' . ($meeting->topic ?: 'بدون موضوع'));
+        });
+
+        TravelItinerary::created(function (TravelItinerary $travel) {
+            self::fire('travel.created', "travel:{$travel->id}", self::at($travel->departure_time), 'تنقل إلى ' . ($travel->destination ?: '—'));
         });
     }
 

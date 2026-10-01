@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class TaskTemplate extends Model
 {
-    public const TRIGGERS = ['match.created', 'training.created', 'meeting.created'];
+    public const TRIGGERS = ['match.created', 'training.created', 'meeting.created', 'travel.created'];
 
     protected $fillable = [
         'title', 'description', 'kind', 'assignee_id', 'created_by', 'priority',

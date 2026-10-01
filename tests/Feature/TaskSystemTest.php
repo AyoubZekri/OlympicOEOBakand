@@ -342,4 +342,32 @@ class TaskSystemTest extends TestCase
         sort($ids);
         $this->assertSame([$mine['id'], $other['id']], $ids);
     }
+
+    public function test_tasks_linked_to_a_meeting_or_a_travel(): void
+    {
+        $meeting = \App\Models\Meeting::create(['topic' => 'تحضير الموسم', 'date' => now()->addDays(2)->toDateString(), 'time' => '10:00', 'location' => 'المقر']);
+        \App\Models\Meeting::create(['topic' => 'قديم', 'date' => now()->subDays(3)->toDateString()]);
+        $travel = \App\Models\TravelItinerary::create(['destination' => 'وهران', 'departure_time' => now()->addDays(4)->setTime(8, 0)]);
+
+        $meetings = $this->actingAs($this->manager)->getJson('/api/tasks/events?type=meeting')->assertOk()->json('data');
+        $this->assertSame([$meeting->id], array_column($meetings, 'id'));
+        $this->assertSame('اجتماع: تحضير الموسم', $meetings[0]['title']);
+        $this->assertStringEndsWith('10:00', $meetings[0]['at']);
+
+        $travels = $this->actingAs($this->manager)->getJson('/api/tasks/events?type=travel')->assertOk()->json('data');
+        $this->assertSame('تنقل إلى وهران', $travels[0]['title']);
+
+        $task = $this->createTask(['event_type' => 'travel', 'event_id' => $travel->id]);
+        $this->assertSame("travel:{$travel->id}", $task['source_ref']);
+        $this->actingAs($this->worker)->getJson("/api/tasks/{$task['id']}")->assertJsonPath('data.event.title', 'تنقل إلى وهران');
+        $this->createTask(['event_type' => 'meeting', 'event_id' => $meeting->id]);
+
+        // Automatic tasks with every new travel
+        $this->actingAs($this->manager)->postJson('/api/tasks/templates/create', [
+            'title' => 'تجهيز {event}', 'kind' => 'event', 'trigger' => 'travel.created', 'assignee_id' => $this->worker->id,
+            'requires_approval' => false, 'offset_minutes' => -1440, 'duration_minutes' => 600,
+        ])->assertCreated();
+        \App\Models\TravelItinerary::create(['destination' => 'سطيف', 'departure_time' => now()->addDays(6)->setTime(7, 0)]);
+        $this->assertTrue(\App\Models\Task::where('title', 'تجهيز تنقل إلى سطيف')->exists());
+    }
 }
