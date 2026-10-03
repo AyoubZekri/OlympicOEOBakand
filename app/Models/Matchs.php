@@ -31,5 +31,15 @@ class Matchs extends Model
     {
         return $this->belongsTo(Club::class, 'opponent_club_id');
     }
+
+    public function callups()
+    {
+        return $this->hasMany(MatchCallup::class, 'match_id');
+    }
+
+    public function administrativeReports()
+    {
+        return $this->hasMany(AdministrativeMatchReport::class, 'match_id');
+    }
 }
 

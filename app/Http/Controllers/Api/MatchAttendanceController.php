@@ -122,6 +122,9 @@ class MatchAttendanceController extends Controller
                     }
                 }
             }
+
+            // The sheet was taken (everyone present leaves no row: this tells it apart from a sheet never taken)
+            $match->forceFill(['attendance_taken_at' => now()])->save();
 
             return response()->json(['message' => 'تم حفظ كشف الحضور بنجاح'], 200);
         } catch (\Exception $e) {

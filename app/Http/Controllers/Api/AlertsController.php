@@ -23,6 +23,9 @@ class AlertsController extends Controller
         'training_sessions',
         'training_session_notices',
         'app_absences',
+        'matches',
+        'match_callups',
+        'match_notices',
     ];
 
     public function version()

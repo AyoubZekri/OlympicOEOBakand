@@ -158,6 +158,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/match-attendance/save', [\App\Http\Controllers\Api\MatchAttendanceController::class, 'saveAttendance']);
 
     // Matches Routes
+    Route::get('/matches/mine', [MatchController::class, 'mine']);
+    Route::get('/matches/mine/notices', [MatchController::class, 'myNotices']);
     Route::get('/matches', [MatchController::class, 'index']);
     Route::post('/matches/create', [MatchController::class, 'store']);
     Route::post('/matches/update', [MatchController::class, 'update']);

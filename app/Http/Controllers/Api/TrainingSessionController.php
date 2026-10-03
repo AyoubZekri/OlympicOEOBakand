@@ -32,6 +32,7 @@ class TrainingSessionController extends Controller
                 'start' => $session->start_time,
                 'end' => $session->end_time,
                 'status' => $session->status,
+                'attendance_taken' => $session->attendance_taken_at !== null,
             ];
         });
 

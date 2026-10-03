@@ -115,6 +115,9 @@ class TrainingAttendanceController extends Controller
             if ($session->status === 'جارية') {
                 $session->update(['status' => 'مكتملة']);
             }
+
+            // The sheet was taken (everyone present leaves no row: this tells it apart from a sheet never taken)
+            $session->forceFill(['attendance_taken_at' => now()])->save();
 
             return response()->json(['message' => 'تم حفظ كشف الحضور بنجاح'], 200);
         } catch (\Exception $e) {
