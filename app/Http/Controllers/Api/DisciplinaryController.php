@@ -51,7 +51,7 @@ class DisciplinaryController extends Controller
 
     /**
      * Personal space: the disciplinary actions of the signed-in user (the member linked to their account),
-     * newest first. The administration's internal notes are left out.
+     * newest first, with the administration's notes and decision (its answer to the member).
      */
     public function mine(Request $request)
     {
@@ -76,6 +76,7 @@ class DisciplinaryController extends Controller
                 'deadlineOrHearingDate' => $action && $action->deadline_or_hearing_date ? date('Y-m-d', strtotime($action->deadline_or_hearing_date)) : '',
                 'hearingLocation' => $action ? $action->hearing_location ?? '' : '',
                 'player_statements' => $action ? $action->player_statements ?? '' : '',
+                'admin_notes' => $action ? $action->admin_notes ?? '' : '',
                 'decision_outcome' => $action ? $action->decision_outcome ?? '' : '',
                 'decision_reasons' => $action ? $action->decision_reasons ?? '' : '',
                 'effective_date' => $action && $action->effective_date ? date('Y-m-d', strtotime($action->effective_date)) : '',
@@ -85,6 +86,39 @@ class DisciplinaryController extends Controller
         })->values();
 
         return response()->json(['status' => 'success', 'data' => $data]);
+    }
+
+    /**
+     * Personal space: the member answers a clarification request (طلب توضيح) concerning them.
+     * Allowed until the administration has written its decision.
+     */
+    public function reply(Request $request)
+    {
+        $data = $request->validate([
+            'id' => 'required|exists:disciplinary_cases,id',
+            'player_statements' => 'required|string|max:5000',
+        ], [
+            'player_statements.required' => 'اكتب ردك',
+        ]);
+
+        $case = DisciplinaryCase::findOrFail($data['id']);
+        $mine = \App\Models\Individual::where('user_id', $request->user()->id)->where('id', $case->individuals_id)->exists();
+        if (! $mine) {
+            return response()->json(['message' => 'هذا الإجراء لا يخصك'], 403);
+        }
+
+        $action = DisciplinaryAction::where('case_id', $case->id)->orderBy('id', 'desc')->first();
+        if (! $action || $action->action_type !== 'طلب توضيح') {
+            return response()->json(['message' => 'الرد متاح فقط على طلبات التوضيح'], 422);
+        }
+        if (trim((string) $action->admin_notes) !== '' || trim((string) $action->decision_outcome) !== '') {
+            return response()->json(['message' => 'صدر القرار، لا يمكن تعديل الرد'], 422);
+        }
+
+        $action->player_statements = trim($data['player_statements']);
+        $action->save();
+
+        return response()->json(['status' => 'success']);
     }
 
     public function store(Request $request)
