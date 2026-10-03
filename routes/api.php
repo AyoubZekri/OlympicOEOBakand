@@ -122,6 +122,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Disciplinary Routes
     Route::get('/disciplinary', [\App\Http\Controllers\Api\DisciplinaryController::class, 'index']);
+    // Personal space: the signed-in user's own disciplinary actions
+    Route::get('/disciplinary/mine', [\App\Http\Controllers\Api\DisciplinaryController::class, 'mine']);
     Route::post('/disciplinary/create', [\App\Http\Controllers\Api\DisciplinaryController::class, 'store']);
     Route::post('/disciplinary/update', [\App\Http\Controllers\Api\DisciplinaryController::class, 'update']);
     Route::post('/disciplinary/delete', [\App\Http\Controllers\Api\DisciplinaryController::class, 'destroy']);

@@ -49,6 +49,44 @@ class DisciplinaryController extends Controller
         return response()->json($data);
     }
 
+    /**
+     * Personal space: the disciplinary actions of the signed-in user (the member linked to their account),
+     * newest first. The administration's internal notes are left out.
+     */
+    public function mine(Request $request)
+    {
+        $memberIds = \App\Models\Individual::where('user_id', $request->user()->id)->pluck('id');
+        $cases = DisciplinaryCase::whereIn('individuals_id', $memberIds)
+            ->orderByDesc('incident_date')
+            ->orderByDesc('id')
+            ->get();
+
+        $data = $cases->map(function (DisciplinaryCase $case) {
+            $action = DisciplinaryAction::where('case_id', $case->id)->orderBy('id', 'desc')->first();
+
+            return [
+                'id' => (string) $case->id,
+                'actionType' => $action ? $action->action_type : 'طلب توضيح',
+                'incidentDate' => $case->incident_date ? date('Y-m-d', strtotime($case->incident_date)) : '',
+                'reason' => $case->description ?? '',
+                'status' => $case->case_status ?? 'مفتوح',
+                'incidentLocation' => $case->incident_location ?? '',
+                'violatedRule' => $case->violated_rule ?? '',
+                'presentPeople' => $case->present_people ?? '',
+                'deadlineOrHearingDate' => $action && $action->deadline_or_hearing_date ? date('Y-m-d', strtotime($action->deadline_or_hearing_date)) : '',
+                'hearingLocation' => $action ? $action->hearing_location ?? '' : '',
+                'player_statements' => $action ? $action->player_statements ?? '' : '',
+                'decision_outcome' => $action ? $action->decision_outcome ?? '' : '',
+                'decision_reasons' => $action ? $action->decision_reasons ?? '' : '',
+                'effective_date' => $action && $action->effective_date ? date('Y-m-d', strtotime($action->effective_date)) : '',
+                'is_acknowledged' => $action ? (bool) $action->is_acknowledged : false,
+                'signed_document' => $action ? $action->signed_document : null,
+            ];
+        })->values();
+
+        return response()->json(['status' => 'success', 'data' => $data]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
