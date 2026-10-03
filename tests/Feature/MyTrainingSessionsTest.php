@@ -61,4 +61,61 @@ class MyTrainingSessionsTest extends TestCase
 
         $this->actingAs($user)->getJson('/api/training-sessions/mine')->assertOk()->assertJsonCount(0);
     }
+
+    public function test_the_members_are_told_when_a_session_is_created_changed_cancelled_or_deleted(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 3)->setTime(12, 0));
+        $user = User::factory()->create();
+        $manager = User::factory()->create();
+        $mine = Team::create(['name' => 'أكابر']);
+        $other = Team::create(['name' => 'أواسط']);
+        Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id, 'team_id' => $mine->id]);
+        $notices = fn () => collect($this->actingAs($user)->getJson('/api/training-sessions/mine/notices')->assertOk()->json());
+        $payload = ['team_id' => $mine->id, 'date' => '2026-10-05', 'location' => 'الملعب', 'start' => '17:00', 'end' => '18:30', 'status' => 'مجدولة'];
+
+        // Created
+        $this->actingAs($manager)->postJson('/api/training-sessions/create', $payload)->assertCreated();
+        $id = TrainingSession::first()->id;
+        $n = $notices();
+        $this->assertCount(1, $n);
+        $this->assertSame(['created', $id, 'أكابر', '2026-10-05', '17:00'], [$n[0]['kind'], $n[0]['session_id'], $n[0]['team_name'], $n[0]['date'], $n[0]['start']]);
+
+        // Edited: new time, the old one is kept; only the latest notice per session
+        $this->actingAs($manager)->postJson('/api/training-sessions/update', ['id' => $id, 'start' => '18:00', 'end' => '19:30'] + $payload)->assertOk();
+        $n = $notices();
+        $this->assertCount(1, $n);
+        $this->assertSame('updated', $n[0]['kind']);
+        $this->assertSame('18:00', $n[0]['start']);
+        $this->assertSame('17:00', $n[0]['previous']['start']);
+
+        // Same values again / a status step: nothing new
+        $this->actingAs($manager)->postJson('/api/training-sessions/update', ['id' => $id, 'start' => '18:00', 'end' => '19:30'] + $payload)->assertOk();
+        $this->actingAs($manager)->postJson('/api/training-sessions/update-status', ['id' => $id, 'status' => 'جارية'])->assertOk();
+        $this->assertSame(2, \App\Models\TrainingSessionNotice::count());
+
+        // Cancelled, then back on
+        $this->actingAs($manager)->postJson('/api/training-sessions/update-status', ['id' => $id, 'status' => 'ملغاة'])->assertOk();
+        $this->assertSame('cancelled', $notices()[0]['kind']);
+        $this->actingAs($manager)->postJson('/api/training-sessions/update-status', ['id' => $id, 'status' => 'مجدولة'])->assertOk();
+        $this->assertSame('restored', $notices()[0]['kind']);
+
+        // Deleted: still announced
+        $this->actingAs($manager)->postJson('/api/training-sessions/delete', ['id' => $id])->assertOk();
+        $n = $notices();
+        $this->assertCount(1, $n);
+        $this->assertSame('deleted', $n[0]['kind']);
+        $this->assertSame('2026-10-05', $n[0]['date']);
+
+        // Another category's session: not mine; a session moved away from my category: cancelled for me
+        $this->actingAs($manager)->postJson('/api/training-sessions/create', ['team_id' => $other->id] + $payload)->assertCreated();
+        $this->assertCount(1, $notices());
+        $this->actingAs($manager)->postJson('/api/training-sessions/create', ['date' => '2026-10-06'] + $payload)->assertCreated();
+        $moved = TrainingSession::latest('id')->first()->id;
+        $this->actingAs($manager)->postJson('/api/training-sessions/update', ['id' => $moved, 'team_id' => $other->id, 'date' => '2026-10-06'] + $payload)->assertOk();
+        $this->assertSame('cancelled', $notices()->firstWhere('session_id', $moved)['kind']);
+
+        // Once the session's day is over, it is no longer announced
+        $this->travelTo(now()->setDate(2026, 10, 7));
+        $this->assertCount(0, $notices());
+    }
 }
