@@ -41,6 +41,7 @@ class PaymentController extends Controller
                 // A purchase on credit: amount above is what has been paid, creditTotal its full price
                 'isCredit' => (bool) $payment->is_credit,
                 'creditTotal' => $payment->is_credit ? (float) $payment->amount : null,
+                'creditor' => $payment->creditor,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
         });
