@@ -23,6 +23,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/improvement-programs/delete', [\App\Http\Controllers\Api\ImprovementProgramController::class, 'delete']);
 
     // Training Sessions Routes
+    Route::get('/training-sessions/mine', [App\Http\Controllers\Api\TrainingSessionController::class, 'mine']);
     Route::get('/training-sessions', [App\Http\Controllers\Api\TrainingSessionController::class, 'index']);
     Route::post('/training-sessions/create', [App\Http\Controllers\Api\TrainingSessionController::class, 'store']);
     Route::post('/training-sessions/update', [App\Http\Controllers\Api\TrainingSessionController::class, 'update']);

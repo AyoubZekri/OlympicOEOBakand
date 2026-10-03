@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppAbsence;
+use App\Models\Individual;
 use App\Models\TrainingSession;
 use Illuminate\Http\Request;
 
@@ -30,6 +32,46 @@ class TrainingSessionController extends Controller
                 'status' => $session->status,
             ];
         });
+
+        return response()->json($data);
+    }
+
+    /**
+     * Personal space: the training sessions of my category (the teams of the members linked to my account),
+     * with my own attendance for each one (my_absence: the absence/late record, null when none).
+     */
+    public function mine(Request $request)
+    {
+        $members = Individual::where('user_id', $request->user()->id)->get(['id', 'team_id']);
+        $teamIds = $members->pluck('team_id')->filter()->unique()->values();
+
+        $sessions = TrainingSession::with('teamId')
+            ->whereIn('team_id', $teamIds)
+            ->orderBy('session_date', 'desc')
+            ->orderBy('start_time', 'desc')
+            ->get();
+
+        $absences = AppAbsence::whereIn('training_session_id', $sessions->pluck('id'))
+            ->whereIn('player_id', $members->pluck('id'))
+            ->get()
+            ->keyBy('training_session_id');
+
+        $data = $sessions->map(function ($session) use ($absences) {
+            $absence = $absences->get($session->id);
+
+            return [
+                'id' => $session->id,
+                'team_id' => (string) $session->team_id,
+                'team_name' => $session->teamId ? $session->teamId->name : 'غير محدد',
+                'date' => $session->session_date,
+                'location' => $session->location,
+                'start' => $session->start_time,
+                'end' => $session->end_time,
+                'status' => $session->status,
+                'my_absence' => $absence ? $absence->absence_type : null,
+                'my_absence_note' => $absence ? ($absence->reason ?? '') : '',
+            ];
+        })->values();
 
         return response()->json($data);
     }
