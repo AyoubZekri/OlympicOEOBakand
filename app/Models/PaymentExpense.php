@@ -26,6 +26,7 @@ class PaymentExpense extends Model
         'contract_id',
         // Purchase on credit (is_credit) and the payments made on it (credit_id)
         'is_credit',
+        'paid_amount',
         'credit_id',
         'creditor',
         'creditor_phone',
@@ -56,20 +57,31 @@ class PaymentExpense extends Model
         return $this->belongsTo(Fund::class, 'fund_id');
     }
 
-    /** A purchase on credit: the expenses that paid it */
+    /** A purchase on credit: the payments made on it (its paid_amount is their sum) */
     public function creditPayments()
     {
-        return $this->hasMany(PaymentExpense::class, 'credit_id')->orderByDesc('Payments_data')->orderByDesc('id');
+        return $this->hasMany(CreditPayment::class, 'payment_expense_id')->orderByDesc('paid_on')->orderByDesc('id');
     }
 
     public function creditPaid(): float
     {
-        return round((float) PaymentExpense::where('credit_id', $this->id)->sum('amount'), 2);
+        return round((float) $this->paid_amount, 2);
     }
 
     public function creditRemaining(): float
     {
-        return max(0, round((float) $this->amount - $this->creditPaid(), 2));
+        return max(0, round((float) $this->amount - (float) $this->paid_amount, 2));
+    }
+
+    /** paid_amount = the sum of the payments; the row's fund and method follow the last payment */
+    public function syncCredit(): void
+    {
+        $last = CreditPayment::where('payment_expense_id', $this->id)->orderByDesc('paid_on')->orderByDesc('id')->first();
+        $this->forceFill([
+            'paid_amount' => round((float) CreditPayment::where('payment_expense_id', $this->id)->sum('amount'), 2),
+            'fund_id' => $last?->fund_id,
+            'payment_method' => $last?->payment_method ?: 'بالدين',
+        ])->save();
     }
 }
 

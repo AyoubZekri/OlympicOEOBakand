@@ -15,14 +15,17 @@ class PaymentController extends Controller
 {
     public function index()
     {
-        // Purchases on credit not paid are not payments: they have their own list (CreditPurchaseController)
-        $payments = PaymentExpense::where('is_credit', false)->orderBy('created_at', 'desc')->get();
+        // A purchase on credit is an expense of what has been paid on it (its paid_amount); not paid yet, it is not one.
+        // The payments page lists the purchases on credit from CreditPurchaseController.
+        $payments = PaymentExpense::where(fn ($q) => $q->where('is_credit', false)->orWhere('paid_amount', '>', 0))
+            ->orderBy('created_at', 'desc')
+            ->get();
         
         $formatted = $payments->map(function($payment) {
             return [
                 'id' => (string) $payment->id,
                 'memberId' => (string) $payment->individuals_id,
-                'amount' => (float) $payment->amount,
+                'amount' => (float) ($payment->is_credit ? $payment->paid_amount : $payment->amount),
                 'paymentMethod' => $payment->payment_method,
                 'paymentDate' => $payment->Payments_data,
                 'checkNumber' => $payment->Occasion_Reason_numper, // we mapped conditionally
@@ -35,8 +38,9 @@ class PaymentController extends Controller
                 'notes' => $payment->notes,
                 'fund_id' => (string) $payment->fund_id,
                 "transactionType" => $payment->transaction_type,
-                // Set when this expense paid (part of) a purchase on credit
-                'creditId' => $payment->credit_id ? (string) $payment->credit_id : null,
+                // A purchase on credit: amount above is what has been paid, creditTotal its full price
+                'isCredit' => (bool) $payment->is_credit,
+                'creditTotal' => $payment->is_credit ? (float) $payment->amount : null,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
         });

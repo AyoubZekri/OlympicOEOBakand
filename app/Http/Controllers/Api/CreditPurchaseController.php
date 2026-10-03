@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CreditPayment;
 use App\Models\Fund;
 use App\Models\FundTransaction;
 use App\Models\PaymentExpense;
@@ -12,10 +13,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Purchases on credit, kept in the payments & expenses table.
- * The purchase is a row with is_credit = 1: nothing is paid and no fund moves when it is recorded.
- * Paying it (all of it or any part, as many times as needed) adds a normal expense row linked to it (credit_id),
- * taken from the chosen fund like any expense. What is paid = the sum of those rows.
+ * Purchases on credit, kept in the payments & expenses table: one row each (is_credit = 1).
+ * Recording one moves no money. Paying it (all of it or any part, as many times as needed) stays on the same row:
+ * its paid_amount column grows, the chosen fund is debited, and the payment is kept in credit_payments.
+ * The payments list counts such a row as an expense of what has been paid.
  * Answers in the debts' shape (kind "purchase") so the page shows them with the same cards and dialogs.
  */
 class CreditPurchaseController extends Controller
@@ -51,6 +52,7 @@ class CreditPurchaseController extends Controller
             'fund_id' => null,
             'Number_of_months' => 1,
             'is_credit' => true,
+            'paid_amount' => 0,
         ]);
 
         return response()->json(['status' => 'success', 'data' => $this->presentOne($credit)], 201);
@@ -69,15 +71,20 @@ class CreditPurchaseController extends Controller
         return response()->json(['status' => 'success', 'data' => $this->presentOne($credit)]);
     }
 
-    /** Deleting the purchase keeps the payments already made: they stay expenses */
+    /** Deleting the purchase cancels its payments: their money goes back to their funds */
     public function destroy(Request $request)
     {
-        $this->find($request)->delete();
+        $credit = $this->find($request);
+        DB::transaction(function () use ($credit) {
+            $credit->creditPayments->each(fn (CreditPayment $p) => $this->cancel($p));
+            FundTransaction::where('payment_expenses_id', $credit->id)->update(['payment_expenses_id' => null]);
+            $credit->delete();
+        });
 
         return response()->json(['status' => 'success']);
     }
 
-    /** Pay all or part of the purchase: a normal expense, taken from the chosen fund */
+    /** Pay all or part of the purchase, on the same row, from the chosen fund */
     public function pay(Request $request)
     {
         $data = $request->validate([
@@ -92,7 +99,7 @@ class CreditPurchaseController extends Controller
         $credit = PaymentExpense::where('is_credit', true)->findOrFail($data['debt_id']);
 
         DB::transaction(function () use ($credit, $data) {
-            PaymentExpense::whereKey($credit->id)->lockForUpdate()->first();
+            $credit = PaymentExpense::whereKey($credit->id)->lockForUpdate()->first();
             $left = $credit->creditRemaining();
             if ($left <= 0) {
                 throw ValidationException::withMessages(['amount' => 'هذا الشراء مدفوع بالكامل']);
@@ -103,58 +110,63 @@ class CreditPurchaseController extends Controller
 
             $amount = round((float) $data['amount'], 2);
             $fundId = $data['fund_id'] ?? null;
-            $payment = PaymentExpense::create([
-                'individuals_id' => null,
+            $payment = new CreditPayment([
+                'payment_expense_id' => $credit->id,
                 'amount' => $amount,
-                'payment_method' => $data['payment_method'] ?? 'نقدا',
-                'Payments_data' => CarbonImmutable::parse($data['paid_on'])->format('Y-m-d'),
-                'amount_Nature' => $credit->amount_Nature,
-                'transaction_type' => 'مصروف',
-                'Occasion_Reason_numper' => 'دفع شراء بالدين - ' . $credit->creditor . ($credit->Occasion_Reason_numper ? ' (' . $credit->Occasion_Reason_numper . ')' : ''),
-                'notes' => $data['notes'] ?? null,
+                'paid_on' => CarbonImmutable::parse($data['paid_on'])->format('Y-m-d'),
                 'fund_id' => $fundId,
-                'Number_of_months' => 1,
-                'credit_id' => $credit->id,
+                'payment_method' => $data['payment_method'] ?? 'نقدا',
+                'notes' => $data['notes'] ?? null,
+                'created_by' => auth()->id(),
             ]);
 
             if ($fundId) {
                 Fund::whereKey($fundId)->decrement('current_balance', $amount);
                 // Same description as the payments page writes for an expense
-                FundTransaction::create([
+                $payment->fund_transaction_id = FundTransaction::create([
                     'fund_id' => $fundId,
-                    'payment_expenses_id' => $payment->id,
+                    'payment_expenses_id' => $credit->id,
                     'type' => 'سحب',
                     'amount' => $amount,
-                    'transaction_date' => $payment->Payments_data,
-                    'description' => 'دفع/مصروف (' . $payment->amount_Nature . ') - ' . $credit->creditor,
+                    'transaction_date' => $payment->paid_on,
+                    'description' => 'دفع/مصروف (' . $credit->amount_Nature . ') - ' . $credit->creditor,
                     'created_by' => auth()->id(),
-                ]);
+                ])->id;
             }
+
+            $payment->save();
+            $credit->syncCredit();
         });
 
         return response()->json(['status' => 'success', 'data' => $this->presentOne($credit)], 201);
     }
 
-    /** Cancel a payment made on a purchase: the money goes back to its fund and the expense is removed */
+    /** Cancel one payment made on a purchase: the money goes back to its fund */
     public function destroyPayment(Request $request)
     {
         $request->validate(['id' => 'required|integer']);
-        $payment = PaymentExpense::whereNotNull('credit_id')->findOrFail($request->input('id'));
-        $credit = PaymentExpense::findOrFail($payment->credit_id);
+        $payment = CreditPayment::findOrFail($request->input('id'));
+        $credit = PaymentExpense::findOrFail($payment->payment_expense_id);
 
-        DB::transaction(function () use ($payment) {
-            $tx = FundTransaction::where('payment_expenses_id', $payment->id)->where('type', 'سحب')->first();
-            if ($payment->fund_id) {
-                Fund::whereKey($payment->fund_id)->increment('current_balance', (float) $payment->amount);
-            }
-            $tx?->delete();
-            $payment->delete();
+        DB::transaction(function () use ($payment, $credit) {
+            $this->cancel($payment);
+            $credit->syncCredit();
         });
 
         return response()->json(['status' => 'success', 'data' => $this->presentOne($credit)]);
     }
 
     /* ── Helpers ── */
+
+    private function cancel(CreditPayment $payment): void
+    {
+        if ($payment->fund_id) {
+            Fund::whereKey($payment->fund_id)->increment('current_balance', (float) $payment->amount);
+        }
+        $tx = $payment->fundTransaction;
+        $payment->delete();
+        $tx?->delete();
+    }
 
     private function find(Request $request): PaymentExpense
     {
@@ -208,8 +220,8 @@ class CreditPurchaseController extends Controller
     /** The purchase in the debts' shape */
     private function present(PaymentExpense $p): array
     {
-        $paid = round((float) $p->creditPayments->sum('amount'), 2);
-        $remaining = max(0, round((float) $p->amount - $paid, 2));
+        $paid = $p->creditPaid();
+        $remaining = $p->creditRemaining();
         $status = $remaining <= 0 ? 'paid' : ($paid > 0 ? 'partial' : 'open');
         $due = $p->due_date ? CarbonImmutable::parse($p->due_date) : null;
 
@@ -223,7 +235,7 @@ class CreditPurchaseController extends Controller
             'paid_amount' => $paid,
             'debt_date' => $p->Payments_data ? substr((string) $p->Payments_data, 0, 10) : null,
             'due_date' => $due?->format('Y-m-d'),
-            'fund_id' => null,
+            'fund_id' => $p->fund_id,
             'fund_name' => null,
             'expense_nature' => $p->amount_Nature,
             'notes' => $p->notes,
@@ -232,10 +244,10 @@ class CreditPurchaseController extends Controller
             'status' => $status,
             'overdue' => $status !== 'paid' && $due && $due->lt(CarbonImmutable::today()),
             'created_at' => $p->created_at?->format('Y-m-d H:i'),
-            'repayments' => $p->creditPayments->map(fn (PaymentExpense $x) => [
+            'repayments' => $p->creditPayments->map(fn (CreditPayment $x) => [
                 'id' => $x->id,
                 'amount' => (float) $x->amount,
-                'paid_on' => $x->Payments_data ? substr((string) $x->Payments_data, 0, 10) : null,
+                'paid_on' => $x->paid_on?->format('Y-m-d'),
                 'fund_id' => $x->fund_id,
                 'fund_name' => $x->fund?->name,
                 'payment_method' => $x->payment_method,
