@@ -16,6 +16,9 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
 
+    // The alerts ask this every few seconds: they reload only when it changes
+    Route::get('/alerts/version', [\App\Http\Controllers\Api\AlertsController::class, 'version']);
+
     // Improvement Programs Routes
     Route::get('/improvement-programs', [\App\Http\Controllers\Api\ImprovementProgramController::class, 'index']);
     Route::post('/improvement-programs/create', [\App\Http\Controllers\Api\ImprovementProgramController::class, 'create']);
