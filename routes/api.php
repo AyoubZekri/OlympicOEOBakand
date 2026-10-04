@@ -16,6 +16,11 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
 
+    // Meetings of the people concerned, and the discussion points they propose (before the meeting starts)
+    Route::get('/meetings/mine', [\App\Http\Controllers\Api\MeetingPointController::class, 'mine']);
+    Route::post('/meetings/points/delete', [\App\Http\Controllers\Api\MeetingPointController::class, 'destroy']);
+    Route::post('/meetings/{id}/points', [\App\Http\Controllers\Api\MeetingPointController::class, 'store'])->whereNumber('id');
+
     // The alerts ask this every few seconds: they reload only when it changes
     Route::get('/alerts/version', [\App\Http\Controllers\Api\AlertsController::class, 'version']);
 

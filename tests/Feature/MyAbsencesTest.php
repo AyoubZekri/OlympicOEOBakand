@@ -35,7 +35,7 @@ class MyAbsencesTest extends TestCase
         $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absent->id, 'text' => ''])->assertStatus(422);
         $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absent->id, 'text' => 'كنت مريضاً'])->assertOk();
         $absent->refresh();
-        $this->assertSame(['pending', 'كنت مريضاً'], [$absent->justification_status, $absent->reason]);
+        $this->assertSame(['pending', 'كنت مريضاً', 'member'], [$absent->justification_status, $absent->reason, $absent->justified_by]);
 
         // Not someone else's, not one already accepted
         $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $theirs->id, 'text' => 'x'])->assertNotFound();
@@ -125,7 +125,7 @@ class MyAbsencesTest extends TestCase
             'document' => \Illuminate\Http\UploadedFile::fake()->create('scan.jpg', 80, 'image/jpeg'),
         ], ['Accept' => 'application/json'])->assertOk();
         $old->refresh();
-        $this->assertSame(['pending', 'أحضر الأب شهادة طبية'], [$old->justification_status, $old->reason]);
+        $this->assertSame(['pending', 'أحضر الأب شهادة طبية', 'administration'], [$old->justification_status, $old->reason, $old->justified_by]);
         $this->assertStringContainsString('uploads/absences/absence_' . $old->id . '_', $old->attachment_path);
         @unlink(public_path('uploads/absences/' . basename($old->attachment_path)));
         @rmdir(public_path('uploads/absences'));

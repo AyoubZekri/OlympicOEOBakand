@@ -74,6 +74,7 @@ class AbsenceController extends Controller
             'attachment_url'       => $rec->attachment_path,
             'justify_until'        => $this->justifyUntil($rec)?->toIso8601String(),
             'decision_note'        => $rec->decision_note,
+            'justified_by'         => $rec->justified_by,
             'decision_date'        => $rec->decision_date ? \Illuminate\Support\Carbon::parse($rec->decision_date)->toIso8601String() : null,
         ];
     }
@@ -236,6 +237,7 @@ class AbsenceController extends Controller
         $absence->is_justified = false;
         $absence->decision_date = null;
         $absence->decision_note = null;
+        $absence->justified_by = 'administration';
         $absence->save();
 
         return response()->json(['message' => 'تم تسجيل التبرير، وهو قيد الدراسة']);
@@ -296,6 +298,7 @@ class AbsenceController extends Controller
         $absence->is_justified = false;
         $absence->decision_date = null;
         $absence->decision_note = null;
+        $absence->justified_by = 'member';
         $absence->save();
 
         return response()->json(['message' => 'تم إرسال التبرير، وهو قيد الدراسة']);

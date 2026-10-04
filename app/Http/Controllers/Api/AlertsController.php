@@ -26,6 +26,9 @@ class AlertsController extends Controller
         'matches',
         'match_callups',
         'match_notices',
+        'department_meetings',
+        'meeting_attendees',
+        'meeting_decisions',
     ];
 
     public function version()
