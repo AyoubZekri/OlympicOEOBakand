@@ -101,6 +101,18 @@ class TrainingAttendanceController extends Controller
                         ->first();
 
                     if ($existing) {
+                        // Same status again: the member's justification, its document and the decision are kept
+                        if ($existing->absence_type === $data['absence_type']) {
+                            unset($data['reason'], $data['is_justified'], $data['justification_status']);
+                            if (!empty($rec['note']) && in_array($existing->justification_status, [null, '', 'none'], true)) {
+                                $data['reason'] = $rec['note'];
+                            }
+                        } else {
+                            // Changed (late / absent...): a new record for the member, who has 24 hours again to justify it
+                            $data['decision_date'] = null;
+                            $data['attachment_path'] = null;
+                            $existing->created_at = now();
+                        }
                         $existing->update($data);
                     } else {
                         AppAbsence::create(array_merge($data, [

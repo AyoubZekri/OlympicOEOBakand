@@ -73,6 +73,7 @@ class AbsenceController extends Controller
             'created_at'           => $rec->created_at?->toIso8601String(),
             'attachment_url'       => $rec->attachment_path,
             'justify_until'        => $this->justifyUntil($rec)?->toIso8601String(),
+            'decision_note'        => $rec->decision_note,
             'decision_date'        => $rec->decision_date ? \Illuminate\Support\Carbon::parse($rec->decision_date)->toIso8601String() : null,
         ];
     }
@@ -83,14 +84,21 @@ class AbsenceController extends Controller
             'id'                   => 'required|exists:app_absences,id',
             'justification_status' => 'required|in:' . implode(',', array_keys(self::STATUS_VALUES)),
             'justification_text'   => 'nullable|string',
+            'decision_note'        => 'nullable|string|max:1000',
         ]);
         $status = self::STATUS_VALUES[$validated['justification_status']];
+        // A refusal says why (the member reads it)
+        $note = trim((string) ($validated['decision_note'] ?? ''));
+        if ($status === 'rejected' && $note === '') {
+            return response()->json(['message' => 'اكتب سبب الرفض'], 422);
+        }
 
         try {
             $absence = AppAbsence::findOrFail($validated['id']);
             $absence->justification_status = $status;
             $absence->is_justified         = $status === 'accepted';
             $absence->reason               = $validated['justification_text'] ?? $absence->reason;
+            $absence->decision_note        = in_array($status, ['accepted', 'rejected'], true) && $note !== '' ? $note : null;
 
             // An accepted absence becomes "justified absent" (as on the attendance sheets);
             // a late arrival, a leave or a holiday request keeps its kind
@@ -215,6 +223,10 @@ class AbsenceController extends Controller
         if (in_array($absence->justification_status, ['accepted', 'مقبول'], true)) {
             return response()->json(['message' => 'تم قبول تبرير هذا السجل من قبل'], 422);
         }
+        // A refused justification is final
+        if (in_array($absence->justification_status, ['rejected', 'مرفوض'], true)) {
+            return response()->json(['message' => 'تم رفض تبرير هذا السجل، ولا يمكن تقديم تبرير آخر'], 422);
+        }
 
         $this->saveDocument($request, $absence);
         if ($text !== '') {
@@ -223,6 +235,7 @@ class AbsenceController extends Controller
         $absence->justification_status = 'pending';
         $absence->is_justified = false;
         $absence->decision_date = null;
+        $absence->decision_note = null;
         $absence->save();
 
         return response()->json(['message' => 'تم تسجيل التبرير، وهو قيد الدراسة']);
@@ -243,8 +256,7 @@ class AbsenceController extends Controller
 
     /**
      * Personal space: I justify one of my records, with a text, a document (PDF / picture), or both,
-     * within 24 hours after it was logged. It then waits for the administration's decision;
-     * after a refusal I may justify again while the 24 hours last.
+     * within 24 hours after it was logged. It then waits for the administration's decision, which is final.
      */
     public function justifyMine(Request $request)
     {
@@ -265,6 +277,10 @@ class AbsenceController extends Controller
         if (in_array($status, ['pending', 'قيد_الدراسة'], true)) {
             return response()->json(['message' => 'تبريرك قيد الدراسة، انتظر قرار الإدارة'], 422);
         }
+        // A refused justification is final
+        if (in_array($status, ['rejected', 'مرفوض'], true)) {
+            return response()->json(['message' => 'تم رفض تبريرك، ولا يمكن تقديم تبرير آخر'], 422);
+        }
         $until = $this->justifyUntil($absence);
         if (!$until) {
             return response()->json(['message' => 'هذا السجل لا يحتاج إلى تبرير'], 422);
@@ -279,51 +295,80 @@ class AbsenceController extends Controller
         $absence->justification_status = 'pending';
         $absence->is_justified = false;
         $absence->decision_date = null;
+        $absence->decision_note = null;
         $absence->save();
 
         return response()->json(['message' => 'تم إرسال التبرير، وهو قيد الدراسة']);
     }
 
+    /** The events a member announces an absence or a lateness for ("أخرى": they write what it is) */
+    private const ANNOUNCE_EVENTS = ['سفر', 'اجتماع', 'تدريب', 'مباراة', 'أخرى'];
+
     /**
-     * Personal space: I ask for a holiday, or announce an absence in advance.
-     * Recorded on my member, waiting for the administration's decision.
+     * Personal space: I ask for a holiday (from / to, not linked to an event), or announce in advance
+     * an absence or a lateness for an event (travel, meeting, training, match, or another one I name).
+     * The reason is a text, a document (PDF / picture), or both. Recorded on my member,
+     * it waits for the administration's decision (accept / refuse).
      */
     public function requestMine(Request $request)
     {
         $validated = $request->validate([
-            'kind'           => 'required|in:leave,absence',
+            'kind'           => 'required|in:leave,absence,late',
             'event_date'     => 'required|date',
             'end_date'       => 'nullable|date|after_or_equal:event_date',
-            'event_category' => 'nullable|in:تدريب,مباراة,اجتماع,أخرى',
-            'reason'         => 'required|string|max:2000',
+            'event_category' => 'required_unless:kind,leave|nullable|in:' . implode(',', self::ANNOUNCE_EVENTS),
+            'event_other'    => 'required_if:event_category,أخرى|nullable|string|max:120',
+            'duration'       => 'nullable|string|max:60',
+            'reason'         => 'nullable|string|max:2000',
+            'document'       => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
         ], [
-            'reason.required' => 'اكتب السبب',
-            'event_date.required' => 'حدد التاريخ',
-            'end_date.after_or_equal' => 'تاريخ النهاية قبل تاريخ البداية',
+            'event_date.required'       => 'حدد التاريخ',
+            'end_date.after_or_equal'   => 'تاريخ النهاية قبل تاريخ البداية',
+            'event_category.required_unless' => 'حدد الحدث (سفر، اجتماع، تدريب، مباراة أو أخرى)',
+            'event_category.in'         => 'حدد الحدث (سفر، اجتماع، تدريب، مباراة أو أخرى)',
+            'event_other.required_if'   => 'اكتب ما هو الحدث',
+            'document.mimes'            => 'الوثيقة يجب أن تكون PDF أو صورة',
+            'document.max'              => 'حجم الوثيقة أكبر من 5 ميغا',
         ]);
+        $reason = trim((string) ($validated['reason'] ?? ''));
+        if ($reason === '' && !$request->hasFile('document')) {
+            return response()->json(['message' => 'اكتب السبب أو أرفق وثيقة'], 422);
+        }
 
         $memberId = $this->myMemberIds($request)->first();
         if (!$memberId) {
             return response()->json(['message' => 'حسابك غير مرتبط بعضو في النادي'], 422);
         }
 
-        $days = null;
-        if (!empty($validated['end_date'])) {
-            $n = \Illuminate\Support\Carbon::parse($validated['event_date'])->diffInDays(\Illuminate\Support\Carbon::parse($validated['end_date'])) + 1;
-            $days = $n === 1 ? 'يوم واحد' : ($n === 2 ? 'يومان' : $n . ' أيام') . ' (حتى ' . substr($validated['end_date'], 0, 10) . ')';
+        $kind = $validated['kind'];
+        $event = null;
+        if ($kind !== 'leave') {
+            $event = $validated['event_category'] === 'أخرى' ? trim($validated['event_other']) : $validated['event_category'];
+        }
+
+        $duration = null;
+        if ($kind === 'leave' && !empty($validated['end_date'])) {
+            $n = (int) \Illuminate\Support\Carbon::parse($validated['event_date'])->diffInDays(\Illuminate\Support\Carbon::parse($validated['end_date'])) + 1;
+            $duration = ($n === 1 ? 'يوم واحد' : ($n === 2 ? 'يومان' : $n . ' أيام')) . ' (حتى ' . substr($validated['end_date'], 0, 10) . ')';
+        } elseif ($kind === 'late' && !empty($validated['duration'])) {
+            $duration = trim($validated['duration']);
         }
 
         $absence = AppAbsence::create([
             'player_id'            => $memberId,
-            'absence_type'         => $validated['kind'] === 'leave' ? 'طلب عطلة' : 'غياب',
-            'event_category'       => $validated['event_category'] ?? ($validated['kind'] === 'leave' ? null : 'أخرى'),
+            'absence_type'         => ['leave' => 'طلب عطلة', 'absence' => 'غياب', 'late' => 'تأخر'][$kind],
+            'event_category'       => $event,
             'event_date'           => substr($validated['event_date'], 0, 10),
-            'duration'             => $days,
-            'reason'               => trim($validated['reason']),
+            'duration'             => $duration,
+            'reason'               => $reason,
             'record_source'        => 'طلب العضو',
             'is_justified'         => false,
             'justification_status' => 'pending',
         ]);
+        if ($request->hasFile('document')) {
+            $this->saveDocument($request, $absence);
+            $absence->save();
+        }
 
         return response()->json(['message' => 'تم إرسال الطلب، وهو قيد الدراسة', 'id' => $absence->id], 201);
     }

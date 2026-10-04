@@ -89,20 +89,23 @@ class MyAbsencesTest extends TestCase
         // Waiting for the decision: no second justification
         $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absence->id, 'text' => 'نص'])->assertStatus(422);
 
-        // Refused: may justify again while the 24 hours last
-        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $absence->id, 'justification_status' => 'rejected'])->assertOk();
-        $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absence->id, 'text' => 'شهادة طبية مرفقة'])->assertOk();
-        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $absence->id, 'justification_status' => 'rejected'])->assertOk();
+        // Refused: final, no other justification (from the member or the administration), even within the 24 hours
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $absence->id, 'justification_status' => 'مرفوض', 'decision_note' => 'لا توجد وثيقة'])->assertOk();
+        $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absence->id, 'text' => 'شهادة طبية مرفقة'])->assertStatus(422)->assertJsonPath('message', 'تم رفض تبريرك، ولا يمكن تقديم تبرير آخر');
+        $this->actingAs($manager)->postJson('/api/absences/justify', ['id' => $absence->id, 'text' => 'x'])->assertStatus(422);
+        // Another record, still open: refused once the 24 hours are over
+        $this->actingAs($manager)->postJson('/api/absences/create', ['player_id' => $me->id, 'absence_type' => 'غياب', 'event_date' => '2026-10-04'])->assertCreated();
+        $absence = AppAbsence::latest('id')->first();
 
         // After 24 hours: too late
-        $this->travelTo(now()->setDate(2026, 10, 5)->setTime(10, 1));
+        $this->travel(25)->hours();
         $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absence->id, 'text' => 'متأخر'])->assertStatus(422)->assertJsonPath('message', 'انتهت مهلة تقديم التبرير (24 ساعة بعد تسجيل الغياب)');
 
         // A holiday request is not justified
         $this->actingAs($user)->postJson('/api/absences/mine/request', ['kind' => 'leave', 'event_date' => '2026-10-10', 'reason' => 'سفر'])->assertCreated();
         $leave = AppAbsence::latest('id')->first();
         $this->assertNull($this->actingAs($user)->getJson('/api/absences/mine')->json()[0]['justify_until'] ?? null);
-        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $leave->id, 'justification_status' => 'rejected'])->assertOk();
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $leave->id, 'justification_status' => 'rejected', 'decision_note' => 'غير كافٍ'])->assertOk();
         $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $leave->id, 'text' => 'x'])->assertStatus(422);
     }
 
@@ -145,7 +148,7 @@ class MyAbsencesTest extends TestCase
         foreach ([$absent, $late, $leave] as $a) {
             $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $a->id, 'justification_status' => 'مقبول'])->assertOk();
         }
-        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $refused->id, 'justification_status' => 'مرفوض'])->assertOk();
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $refused->id, 'justification_status' => 'مرفوض', 'decision_note' => 'لا توجد وثيقة'])->assertOk();
         $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $refused->id, 'justification_status' => 'شيء'])->assertStatus(422);
 
         $this->assertSame(['accepted', 'غائب مبرر', true], [$absent->fresh()->justification_status, $absent->fresh()->absence_type, (bool) $absent->fresh()->is_justified]);
@@ -158,5 +161,102 @@ class MyAbsencesTest extends TestCase
         AppAbsence::create(['player_id' => $member->id, 'absence_type' => 'غياب', 'event_date' => '2026-09-05', 'justification_status' => 'مقبول']);
         $this->assertCount(4, $this->actingAs($manager)->getJson('/api/absences?justification_status=مقبول')->assertOk()->json());
         $this->assertCount(1, $this->actingAs($manager)->getJson('/api/absences?justification_status=مرفوض')->json());
+    }
+
+    public function test_lateness_follows_the_same_way_and_a_sheet_saved_again_keeps_the_justification(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 4)->setTime(18, 0));
+        $user = User::factory()->create();
+        $manager = User::factory()->create();
+        $team = Team::create(['name' => 'أكابر']);
+        $me = Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id, 'team_id' => $team->id]);
+        $session = \App\Models\TrainingSession::create(['team_id' => $team->id, 'session_date' => '2026-10-04', 'location' => 'الملعب', 'start_time' => '16:00', 'end_time' => '17:30', 'status' => 'مكتملة']);
+        $sheet = fn (string $status) => $this->actingAs($manager)->postJson('/api/training-attendance/save', ['session_id' => $session->id, 'records' => [['player_id' => $me->id, 'status' => $status]]])->assertOk();
+
+        // The manager marks me late on the sheet: I have 24 hours
+        $sheet('متأخر');
+        $row = $this->actingAs($user)->getJson('/api/absences/mine')->json()[0];
+        $this->assertSame(['متأخر', 'none'], [$row['absence_type'], $row['justification_status']]);
+        $this->assertSame('2026-10-05T18:00:00', substr($row['justify_until'], 0, 19));
+
+        // I justify it (document + text)
+        $this->travel(2)->hours();
+        $this->actingAs($user)->post('/api/absences/mine/justify', [
+            'id' => $row['id'], 'text' => 'عطل في الحافلة',
+            'document' => \Illuminate\Http\UploadedFile::fake()->create('ticket.png', 30, 'image/png'),
+        ], ['Accept' => 'application/json'])->assertOk();
+        $late = AppAbsence::find($row['id']);
+        @unlink(public_path('uploads/absences/' . basename($late->attachment_path)));
+        @rmdir(public_path('uploads/absences'));
+
+        // The sheet saved again unchanged: my justification is kept
+        $sheet('متأخر');
+        $late->refresh();
+        $this->assertSame(['pending', 'عطل في الحافلة'], [$late->justification_status, $late->reason]);
+        $this->assertNotNull($late->attachment_path);
+
+        // Accepted: still late (justified), and kept when the sheet is saved again
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $late->id, 'justification_status' => 'مقبول'])->assertOk();
+        $sheet('متأخر');
+        $late->refresh();
+        $this->assertSame(['accepted', 'متأخر'], [$late->justification_status, $late->absence_type]);
+
+        // Changed to absent: a new record for me, 24 hours again
+        $this->travel(30)->hours();
+        $sheet('غائب غير مبرر');
+        $late->refresh();
+        $this->assertSame(['غائب غير مبرر', 'none', null], [$late->absence_type, $late->justification_status, $late->attachment_path]);
+        $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $late->id, 'text' => 'مرض'])->assertOk();
+    }
+
+    public function test_a_refusal_needs_its_reason_and_the_member_reads_it(): void
+    {
+        $user = User::factory()->create();
+        $manager = User::factory()->create();
+        $me = Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
+        $a = AppAbsence::create(['player_id' => $me->id, 'absence_type' => 'غياب', 'event_date' => '2026-10-04', 'justification_status' => 'pending', 'reason' => 'مرض']);
+
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $a->id, 'justification_status' => 'مرفوض'])
+            ->assertStatus(422)->assertJsonPath('message', 'اكتب سبب الرفض');
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $a->id, 'justification_status' => 'مرفوض', 'decision_note' => 'الشهادة الطبية غير مختومة'])->assertOk();
+
+        $row = $this->actingAs($user)->getJson('/api/absences/mine')->json()[0];
+        $this->assertSame(['rejected', 'الشهادة الطبية غير مختومة'], [$row['justification_status'], $row['decision_note']]);
+
+        // Accepting needs no reason
+        $b = AppAbsence::create(['player_id' => $me->id, 'absence_type' => 'تأخر', 'event_date' => '2026-10-03', 'justification_status' => 'pending', 'reason' => 'زحمة']);
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $b->id, 'justification_status' => 'مقبول'])->assertOk();
+        $this->assertNull($b->fresh()->decision_note);
+    }
+
+    public function test_the_member_asks_for_a_holiday_or_announces_an_absence_or_a_lateness(): void
+    {
+        $user = User::factory()->create();
+        $me = Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
+        $send = fn (array $data) => $this->actingAs($user)->post('/api/absences/mine/request', $data, ['Accept' => 'application/json']);
+
+        // Absence for a travel, reason as a document only
+        $send(['kind' => 'absence', 'event_category' => 'سفر', 'event_date' => '2026-10-08', 'document' => \Illuminate\Http\UploadedFile::fake()->create('billet.pdf', 50, 'application/pdf')])->assertCreated();
+        $r = AppAbsence::latest('id')->first();
+        $this->assertSame(['غياب', 'سفر', 'pending', 'طلب العضو', ''], [$r->absence_type, $r->event_category, $r->justification_status, $r->record_source, $r->reason]);
+        $this->assertStringContainsString('uploads/absences/absence_' . $r->id . '_', $r->attachment_path);
+        @unlink(public_path('uploads/absences/' . basename($r->attachment_path)));
+        @rmdir(public_path('uploads/absences'));
+
+        // Lateness for another event, named, with the expected delay
+        $send(['kind' => 'late', 'event_category' => 'أخرى', 'event_other' => 'حصة تصوير', 'event_date' => '2026-10-09', 'duration' => '30 دقيقة', 'reason' => 'امتحان'])->assertCreated();
+        $r = AppAbsence::latest('id')->first();
+        $this->assertSame(['تأخر', 'حصة تصوير', '30 دقيقة'], [$r->absence_type, $r->event_category, $r->duration]);
+
+        // A holiday is not linked to an event
+        $send(['kind' => 'leave', 'event_category' => 'تدريب', 'event_date' => '2026-10-10', 'end_date' => '2026-10-11', 'reason' => 'سفر'])->assertCreated();
+        $r = AppAbsence::latest('id')->first();
+        $this->assertSame(['طلب عطلة', null, 'يومان (حتى 2026-10-11)'], [$r->absence_type, $r->event_category, $r->duration]);
+
+        // Refused: no event, "other" without its name, no reason nor document
+        $send(['kind' => 'absence', 'event_date' => '2026-10-08', 'reason' => 'x'])->assertStatus(422);
+        $send(['kind' => 'late', 'event_category' => 'أخرى', 'event_date' => '2026-10-08', 'reason' => 'x'])->assertStatus(422)->assertJsonValidationErrors('event_other');
+        $send(['kind' => 'absence', 'event_category' => 'اجتماع', 'event_date' => '2026-10-08'])->assertStatus(422)->assertJsonPath('message', 'اكتب السبب أو أرفق وثيقة');
+        $this->assertSame(3, AppAbsence::count());
     }
 }
