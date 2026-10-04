@@ -56,4 +56,53 @@ class MyAbsencesTest extends TestCase
         // An account without a member cannot ask
         $this->actingAs(User::factory()->create())->postJson('/api/absences/mine/request', ['kind' => 'leave', 'event_date' => '2026-10-10', 'reason' => 'x'])->assertStatus(422);
     }
+
+    public function test_a_justification_text_or_document_within_24_hours_then_a_decision(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 4)->setTime(10, 0));
+        $user = User::factory()->create();
+        $manager = User::factory()->create();
+        $me = Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
+
+        // The manager logs an absence: the member has 24 hours
+        $this->actingAs($manager)->postJson('/api/absences/create', ['player_id' => $me->id, 'absence_type' => 'غياب', 'event_category' => 'تدريب', 'event_date' => '2026-10-04'])->assertCreated();
+        $absence = AppAbsence::latest('id')->first();
+        $row = $this->actingAs($user)->getJson('/api/absences/mine')->json()[0];
+        $this->assertSame('2026-10-05T10:00:00', substr($row['justify_until'], 0, 19));
+
+        // Nothing sent: refused
+        $this->actingAs($user)->post('/api/absences/mine/justify', ['id' => $absence->id], ['Accept' => 'application/json'])->assertStatus(422);
+        $this->actingAs($user)->post('/api/absences/mine/justify', ['id' => $absence->id, 'document' => \Illuminate\Http\UploadedFile::fake()->create('x.exe', 10)], ['Accept' => 'application/json'])->assertStatus(422);
+
+        // A document alone is enough
+        $this->travel(5)->hours();
+        $this->actingAs($user)->post('/api/absences/mine/justify', [
+            'id' => $absence->id,
+            'document' => \Illuminate\Http\UploadedFile::fake()->create('certificat.pdf', 120, 'application/pdf'),
+        ], ['Accept' => 'application/json'])->assertOk();
+        $absence->refresh();
+        $this->assertSame('pending', $absence->justification_status);
+        $this->assertStringContainsString('uploads/absences/absence_' . $absence->id . '_', $absence->attachment_path);
+        $this->assertSame($absence->attachment_path, $this->actingAs($user)->getJson('/api/absences/mine')->json()[0]['attachment_url']);
+        @unlink(public_path('uploads/absences/' . basename($absence->attachment_path)));
+
+        // Waiting for the decision: no second justification
+        $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absence->id, 'text' => 'نص'])->assertStatus(422);
+
+        // Refused: may justify again while the 24 hours last
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $absence->id, 'justification_status' => 'rejected'])->assertOk();
+        $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absence->id, 'text' => 'شهادة طبية مرفقة'])->assertOk();
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $absence->id, 'justification_status' => 'rejected'])->assertOk();
+
+        // After 24 hours: too late
+        $this->travelTo(now()->setDate(2026, 10, 5)->setTime(10, 1));
+        $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $absence->id, 'text' => 'متأخر'])->assertStatus(422)->assertJsonPath('message', 'انتهت مهلة تقديم التبرير (24 ساعة بعد تسجيل الغياب)');
+
+        // A holiday request is not justified
+        $this->actingAs($user)->postJson('/api/absences/mine/request', ['kind' => 'leave', 'event_date' => '2026-10-10', 'reason' => 'سفر'])->assertCreated();
+        $leave = AppAbsence::latest('id')->first();
+        $this->assertNull($this->actingAs($user)->getJson('/api/absences/mine')->json()[0]['justify_until'] ?? null);
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $leave->id, 'justification_status' => 'rejected'])->assertOk();
+        $this->actingAs($user)->postJson('/api/absences/mine/justify', ['id' => $leave->id, 'text' => 'x'])->assertStatus(422);
+    }
 }

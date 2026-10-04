@@ -9,6 +9,9 @@ use Illuminate\Http\Request;
 
 class AbsenceController extends Controller
 {
+    /** A member justifies a record logged on them within this many hours */
+    public const JUSTIFY_HOURS = 24;
+
     public function index(Request $request)
     {
         $query = AppAbsence::with([
@@ -59,6 +62,8 @@ class AbsenceController extends Controller
             'justification_status' => $rec->justification_status ?? 'none',
             'record_source'        => $rec->record_source ?? 'يدوي',
             'created_at'           => $rec->created_at?->toIso8601String(),
+            'attachment_url'       => $rec->attachment_path,
+            'justify_until'        => $this->justifyUntil($rec)?->toIso8601String(),
             'decision_date'        => $rec->decision_date ? \Illuminate\Support\Carbon::parse($rec->decision_date)->toIso8601String() : null,
         ];
     }
@@ -154,27 +159,69 @@ class AbsenceController extends Controller
     }
 
     /**
-     * Personal space: I justify one of my records. It then waits for the administration's decision.
-     * Not once accepted; again after a refusal.
+     * Until when the member may justify a record: 24 hours after it was logged by the administration.
+     * None for a holiday request or an absence the member announced (they are decided as they are).
+     */
+    private function justifyUntil(AppAbsence $rec): ?\Illuminate\Support\Carbon
+    {
+        if (!$rec->created_at || $rec->record_source === 'طلب العضو' || $rec->absence_type === 'طلب عطلة') {
+            return null;
+        }
+
+        return $rec->created_at->copy()->addHours(self::JUSTIFY_HOURS);
+    }
+
+    /**
+     * Personal space: I justify one of my records, with a text, a document (PDF / picture), or both,
+     * within 24 hours after it was logged. It then waits for the administration's decision;
+     * after a refusal I may justify again while the 24 hours last.
      */
     public function justifyMine(Request $request)
     {
         $validated = $request->validate([
-            'id'   => 'required|integer',
-            'text' => 'required|string|max:2000',
+            'id'       => 'required|integer',
+            'text'     => 'nullable|string|max:2000',
+            'document' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
         ], [
-            'text.required' => 'اكتب نص التبرير',
+            'document.mimes' => 'الوثيقة يجب أن تكون PDF أو صورة',
+            'document.max'   => 'حجم الوثيقة أكبر من 5 ميغا',
         ]);
+        $text = trim((string) ($validated['text'] ?? ''));
+        if ($text === '' && !$request->hasFile('document')) {
+            return response()->json(['message' => 'أرفق وثيقة أو اكتب نص التبرير'], 422);
+        }
 
         $absence = AppAbsence::where('id', $validated['id'])->whereIn('player_id', $this->myMemberIds($request))->first();
         if (!$absence) {
             return response()->json(['message' => 'هذا السجل غير موجود في سجلك'], 404);
         }
-        if (in_array($absence->justification_status, ['accepted', 'مقبول'], true)) {
+        $status = $absence->justification_status;
+        if (in_array($status, ['accepted', 'مقبول'], true)) {
             return response()->json(['message' => 'تم قبول تبرير هذا السجل من قبل'], 422);
         }
+        if (in_array($status, ['pending', 'قيد_الدراسة'], true)) {
+            return response()->json(['message' => 'تبريرك قيد الدراسة، انتظر قرار الإدارة'], 422);
+        }
+        $until = $this->justifyUntil($absence);
+        if (!$until) {
+            return response()->json(['message' => 'هذا السجل لا يحتاج إلى تبرير'], 422);
+        }
+        if (now()->greaterThan($until)) {
+            return response()->json(['message' => 'انتهت مهلة تقديم التبرير (24 ساعة بعد تسجيل الغياب)'], 422);
+        }
 
-        $absence->reason = trim($validated['text']);
+        if ($request->hasFile('document')) {
+            $file = $request->file('document');
+            $name = 'absence_' . $absence->id . '_' . time() . '.' . strtolower($file->getClientOriginalExtension());
+            $folder = public_path('uploads/absences');
+            if (!file_exists($folder)) {
+                mkdir($folder, 0755, true);
+            }
+            $file->move($folder, $name);
+            $absence->attachment_path = asset('uploads/absences/' . $name);
+        }
+
+        $absence->reason = $text;
         $absence->justification_status = 'pending';
         $absence->is_justified = false;
         $absence->decision_date = null;
