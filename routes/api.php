@@ -45,6 +45,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/absences', [App\Http\Controllers\Api\AbsenceController::class, 'index']);
     Route::post('/absences/create', [App\Http\Controllers\Api\AbsenceController::class, 'store']);
     Route::post('/absences/update-justification', [App\Http\Controllers\Api\AbsenceController::class, 'updateJustification']);
+    Route::post('/absences/justify', [App\Http\Controllers\Api\AbsenceController::class, 'justify']);
     Route::post('/absences/delete', [App\Http\Controllers\Api\AbsenceController::class, 'destroy']);
 
     Route::get('/user', [AuthController::class, 'user']);

@@ -12,6 +12,14 @@ class AbsenceController extends Controller
     /** A member justifies a record logged on them within this many hours */
     public const JUSTIFY_HOURS = 24;
 
+    /** The pages send the status in Arabic or in English: one value is saved (English) */
+    private const STATUS_VALUES = [
+        'none' => 'none', 'لا_يوجد' => 'none',
+        'pending' => 'pending', 'قيد_الدراسة' => 'pending',
+        'accepted' => 'accepted', 'مقبول' => 'accepted',
+        'rejected' => 'rejected', 'مرفوض' => 'rejected',
+    ];
+
     public function index(Request $request)
     {
         $query = AppAbsence::with([
@@ -30,7 +38,8 @@ class AbsenceController extends Controller
         }
 
         if ($request->filled('justification_status')) {
-            $query->where('justification_status', $request->justification_status);
+            $status = self::STATUS_VALUES[$request->justification_status] ?? $request->justification_status;
+            $query->whereIn('justification_status', array_keys(self::STATUS_VALUES, $status, true) ?: [$status]);
         }
 
         $absences = $query->get()->map(fn ($rec) => $this->present($rec));
@@ -72,18 +81,20 @@ class AbsenceController extends Controller
     {
         $validated = $request->validate([
             'id'                   => 'required|exists:app_absences,id',
-            'justification_status' => 'required|in:none,pending,accepted,rejected',
+            'justification_status' => 'required|in:' . implode(',', array_keys(self::STATUS_VALUES)),
             'justification_text'   => 'nullable|string',
         ]);
+        $status = self::STATUS_VALUES[$validated['justification_status']];
 
         try {
             $absence = AppAbsence::findOrFail($validated['id']);
-            $absence->justification_status = $validated['justification_status'];
-            $absence->is_justified         = $validated['justification_status'] === 'accepted';
+            $absence->justification_status = $status;
+            $absence->is_justified         = $status === 'accepted';
             $absence->reason               = $validated['justification_text'] ?? $absence->reason;
 
-            // If accepted upgrade absence_type to مبرر
-            if ($validated['justification_status'] === 'accepted') {
+            // An accepted absence becomes "justified absent" (as on the attendance sheets);
+            // a late arrival, a leave or a holiday request keeps its kind
+            if ($status === 'accepted' && in_array($absence->absence_type, ['غياب', 'غائب', 'غائب غير مبرر'], true)) {
                 $absence->absence_type = 'غائب مبرر';
             }
 
@@ -158,6 +169,65 @@ class AbsenceController extends Controller
         return response()->json($records);
     }
 
+    /** Rules of a justification: a text, a document (PDF / picture), or both */
+    private const JUSTIFY_RULES = [
+        'id'       => 'required|integer',
+        'text'     => 'nullable|string|max:2000',
+        'document' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
+    ];
+
+    private const JUSTIFY_MESSAGES = [
+        'document.mimes' => 'الوثيقة يجب أن تكون PDF أو صورة',
+        'document.max'   => 'حجم الوثيقة أكبر من 5 ميغا',
+    ];
+
+    /** Keeps the justification document in public/uploads/absences (same place as the other uploaded documents) */
+    private function saveDocument(Request $request, AppAbsence $absence): void
+    {
+        if (!$request->hasFile('document')) {
+            return;
+        }
+        $file = $request->file('document');
+        $name = 'absence_' . $absence->id . '_' . time() . '.' . strtolower($file->getClientOriginalExtension());
+        $folder = public_path('uploads/absences');
+        if (!file_exists($folder)) {
+            mkdir($folder, 0755, true);
+        }
+        $file->move($folder, $name);
+        $absence->attachment_path = asset('uploads/absences/' . $name);
+    }
+
+    /**
+     * Management: the administration justifies a member's record for them, with a text, a document, or both,
+     * at any time (no 24-hour limit). It then waits for the decision (accept / refuse), like a member's justification.
+     */
+    public function justify(Request $request)
+    {
+        $validated = $request->validate(self::JUSTIFY_RULES, self::JUSTIFY_MESSAGES);
+        $text = trim((string) ($validated['text'] ?? ''));
+        if ($text === '' && !$request->hasFile('document')) {
+            return response()->json(['message' => 'أرفق وثيقة أو اكتب نص التبرير'], 422);
+        }
+        $absence = AppAbsence::find($validated['id']);
+        if (!$absence) {
+            return response()->json(['message' => 'السجل غير موجود'], 404);
+        }
+        if (in_array($absence->justification_status, ['accepted', 'مقبول'], true)) {
+            return response()->json(['message' => 'تم قبول تبرير هذا السجل من قبل'], 422);
+        }
+
+        $this->saveDocument($request, $absence);
+        if ($text !== '') {
+            $absence->reason = $text;
+        }
+        $absence->justification_status = 'pending';
+        $absence->is_justified = false;
+        $absence->decision_date = null;
+        $absence->save();
+
+        return response()->json(['message' => 'تم تسجيل التبرير، وهو قيد الدراسة']);
+    }
+
     /**
      * Until when the member may justify a record: 24 hours after it was logged by the administration.
      * None for a holiday request or an absence the member announced (they are decided as they are).
@@ -178,14 +248,7 @@ class AbsenceController extends Controller
      */
     public function justifyMine(Request $request)
     {
-        $validated = $request->validate([
-            'id'       => 'required|integer',
-            'text'     => 'nullable|string|max:2000',
-            'document' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
-        ], [
-            'document.mimes' => 'الوثيقة يجب أن تكون PDF أو صورة',
-            'document.max'   => 'حجم الوثيقة أكبر من 5 ميغا',
-        ]);
+        $validated = $request->validate(self::JUSTIFY_RULES, self::JUSTIFY_MESSAGES);
         $text = trim((string) ($validated['text'] ?? ''));
         if ($text === '' && !$request->hasFile('document')) {
             return response()->json(['message' => 'أرفق وثيقة أو اكتب نص التبرير'], 422);
@@ -210,16 +273,7 @@ class AbsenceController extends Controller
             return response()->json(['message' => 'انتهت مهلة تقديم التبرير (24 ساعة بعد تسجيل الغياب)'], 422);
         }
 
-        if ($request->hasFile('document')) {
-            $file = $request->file('document');
-            $name = 'absence_' . $absence->id . '_' . time() . '.' . strtolower($file->getClientOriginalExtension());
-            $folder = public_path('uploads/absences');
-            if (!file_exists($folder)) {
-                mkdir($folder, 0755, true);
-            }
-            $file->move($folder, $name);
-            $absence->attachment_path = asset('uploads/absences/' . $name);
-        }
+        $this->saveDocument($request, $absence);
 
         $absence->reason = $text;
         $absence->justification_status = 'pending';
