@@ -30,6 +30,7 @@ class AlertsController extends Controller
         'meeting_attendees',
         'meeting_decisions',
         'meeting_notices',
+        'travel_itineraries',
     ];
 
     public function version()

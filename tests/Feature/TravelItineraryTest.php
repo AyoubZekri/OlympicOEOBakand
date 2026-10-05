@@ -111,4 +111,24 @@ class TravelItineraryTest extends TestCase
             'destination' => 'x', 'departure_time' => '2026-10-10 08:00', 'player_ids' => [9999],
         ])->assertStatus(422);
     }
+
+    public function test_my_travels_with_my_role(): void
+    {
+        $user = User::factory()->create();
+        $me = Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
+        $other = Individual::create(['type' => 'coach', 'first_name' => 'سمير', 'last_name' => 'بن']);
+        $at = fn (int $days) => now()->addDays($days)->setTime(8, 0)->format('Y-m-d H:i');
+
+        TravelItinerary::create(['destination' => 'وهران', 'departure_time' => $at(2), 'player_ids' => [$me->id, $other->id], 'staff_ids' => []]);
+        TravelItinerary::create(['destination' => 'قسنطينة', 'departure_time' => $at(5), 'head_of_delegation_id' => $me->id]);
+        TravelItinerary::create(['destination' => 'عنابة', 'departure_time' => $at(7), 'staff_ids' => [$me->id]]);
+        TravelItinerary::create(['destination' => 'سطيف', 'departure_time' => $at(3), 'player_ids' => [$other->id]]); // not mine
+
+        $this->getJson('/api/travels/mine')->assertUnauthorized();
+        $data = $this->actingAs($user)->getJson('/api/travels/mine')->assertOk()->json('data');
+        $this->assertSame([['عنابة', 'staff'], ['قسنطينة', 'head'], ['وهران', 'player']], array_map(fn ($t) => [$t['destination'], $t['my_role']], $data));
+        $this->assertSame('أحمد علي', $data[2]['players'][0]['name']);
+
+        $this->actingAs(User::factory()->create())->getJson('/api/travels/mine')->assertOk()->assertJsonCount(0, 'data');
+    }
 }

@@ -190,4 +190,40 @@ class TravelItineraryController extends Controller
         }
         return $data;
     }
+
+    /**
+     * Personal space: the trips I am on (head of the delegation, staff or player), newest first,
+     * each with my role in it (my_role: head | staff | player).
+     */
+    public function mine(Request $request)
+    {
+        $memberIds = Individual::where('user_id', $request->user()->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if (!$memberIds) {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+
+        $roleOf = function (TravelItinerary $t) use ($memberIds): ?string {
+            if (in_array((int) $t->head_of_delegation_id, $memberIds, true)) {
+                return 'head';
+            }
+            if (array_intersect(array_map('intval', $t->staff_ids ?? []), $memberIds)) {
+                return 'staff';
+            }
+            if (array_intersect(array_map('intval', $t->player_ids ?? []), $memberIds)) {
+                return 'player';
+            }
+            return null;
+        };
+
+        $travels = TravelItinerary::with(['matchId.opponentClub:id,name', 'matchId.team:id,name', 'headOfDelegationId:id,first_name,last_name,type', 'team:id,name'])
+            ->orderByDesc('departure_time')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn ($t) => $roleOf($t) !== null)
+            ->values();
+
+        $people = $this->people($travels->flatMap(fn ($t) => array_merge($t->staff_ids ?? [], $t->player_ids ?? []))->unique()->values()->all());
+
+        return response()->json(['status' => 'success', 'data' => $travels->map(fn ($t) => array_merge($this->present($t, $people), ['my_role' => $roleOf($t)]))]);
+    }
 }

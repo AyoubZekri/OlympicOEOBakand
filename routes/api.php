@@ -199,6 +199,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'destroy']);
 
     // Travels (travel_itineraries)
+    Route::get('/travels/mine', [\App\Http\Controllers\Api\TravelItineraryController::class, 'mine']);
     Route::get('/travels', [\App\Http\Controllers\Api\TravelItineraryController::class, 'index']);
     Route::get('/travels/options', [\App\Http\Controllers\Api\TravelItineraryController::class, 'options']);
     Route::post('/travels/create', [\App\Http\Controllers\Api\TravelItineraryController::class, 'store']);
