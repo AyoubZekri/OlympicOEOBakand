@@ -32,6 +32,8 @@ class AlertsController extends Controller
         'meeting_notices',
         'travel_itineraries',
         'travel_notices',
+        'player_medical_records',
+        'medical_notices',
     ];
 
     public function version()

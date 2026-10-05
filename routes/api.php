@@ -188,6 +188,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/administrative-reports/save', [\App\Http\Controllers\Api\AdministrativeMatchReportController::class, 'save']);
 
     // Medical Records Routes
+    Route::get('/medical-records/mine/notices', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'myNotices']);
+    Route::get('/medical-records/mine', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'mine']);
     Route::get('/medical-records', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'index']);
     Route::post('/medical-records/create', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'store']);
     Route::post('/medical-records/update/{id}', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'update']);
