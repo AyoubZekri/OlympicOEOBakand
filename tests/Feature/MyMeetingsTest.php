@@ -73,4 +73,42 @@ class MyMeetingsTest extends TestCase
         $this->actingAs($manager)->postJson('/api/meetings/points/delete', ['meeting_id' => $meeting->id, 'point_id' => $theirs])->assertOk();
         $this->assertCount(2, $meeting->fresh()->points);
     }
+
+    public function test_the_members_are_told_when_a_meeting_changes_is_deleted_or_they_are_taken_off(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-05 10:00', 'Africa/Algiers'));
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $me = Individual::create(['type' => 'coach', 'first_name' => 'سمير', 'last_name' => 'بن', 'user_id' => $user->id]);
+        $mate = Individual::create(['type' => 'player', 'first_name' => 'ياسين', 'last_name' => 'كريم', 'user_id' => $other->id]);
+        $notices = fn (User $u) => $this->actingAs($u)->getJson('/api/meetings/mine/notices')->assertOk()->json();
+        $att = fn (...$people) => array_map(fn ($p) => ['id' => (string) $p->id, 'name' => $p->first_name, 'status' => 'pending'], $people);
+
+        $id = $this->postJson('/api/meetings', ['topic' => 'التحضير', 'date' => '2026-10-08', 'time' => '18:00', 'location' => 'المقر', 'attendees' => $att($me, $mate), 'points' => []])->assertCreated()->json('id');
+        $this->assertSame([], $notices($user)); // a new meeting: "invited" comes from the meetings list
+
+        // A new date and place: both told, with the old values
+        $this->putJson("/api/meetings/{$id}", ['date' => '2026-10-09', 'time' => '17:00', 'location' => 'القاعة', 'attendees' => $att($me, $mate)])->assertOk();
+        $n = $notices($user)[0];
+        $this->assertSame(['updated', '2026-10-09', '17:00', 'القاعة'], [$n['kind'], $n['date'], $n['time'], $n['location']]);
+        $this->assertSame(['2026-10-08', '18:00', 'المقر'], [$n['previous']['date'], $n['previous']['time'], $n['previous']['location']]);
+        $this->assertSame('updated', $notices($other)[0]['kind']);
+
+        // An attendance status only: nothing new
+        $this->putJson("/api/meetings/{$id}", ['attendees' => [['id' => (string) $me->id, 'name' => 'سمير', 'status' => 'confirmed'], ['id' => (string) $mate->id, 'name' => 'ياسين', 'status' => 'pending']]])->assertOk();
+        $this->assertSame(1, \App\Models\MeetingNotice::count());
+
+        // Taken off the list: told; the one still invited is not
+        $this->putJson("/api/meetings/{$id}", ['attendees' => $att($me)])->assertOk();
+        $this->assertSame('uninvited', $notices($other)[0]['kind']);
+        $this->assertSame('updated', $notices($user)[0]['kind']);
+
+        // Deleted: still announced to the invited
+        $this->deleteJson("/api/meetings/{$id}")->assertNoContent();
+        $this->assertSame(['deleted', 'التحضير'], [$notices($user)[0]['kind'], $notices($user)[0]['topic']]);
+
+        // After the meeting's day: no longer announced
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-10 10:00', 'Africa/Algiers'));
+        $this->assertSame([], $notices($user));
+    }
 }

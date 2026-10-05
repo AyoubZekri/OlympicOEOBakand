@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Decision;
 use App\Models\Individual;
 use App\Models\Meeting;
+use App\Models\MeetingNotice;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -196,5 +197,37 @@ class MeetingPointController extends Controller
 
             return response()->json(['message' => 'تم حذف النقطة']);
         });
+    }
+
+    /**
+     * Personal space: what happened lately to my meetings (changed, deleted, taken off the list),
+     * the latest per meeting, for the meetings not held yet and announced in the last 14 days.
+     */
+    public function myNotices(Request $request)
+    {
+        $memberIds = Individual::where('user_id', $request->user()->id)->pluck('id')->map(fn ($id) => (int) $id);
+        if ($memberIds->isEmpty()) {
+            return response()->json([]);
+        }
+        $today = now('Africa/Algiers')->toDateString();
+
+        $notices = MeetingNotice::where('created_at', '>=', now()->subDays(14))
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (MeetingNotice $n) => collect($n->member_ids)->map(fn ($id) => (int) $id)->intersect($memberIds)->isNotEmpty())
+            ->filter(fn (MeetingNotice $n) => !$n->date || $n->date >= $today)
+            ->unique('meeting_id')
+            ->values();
+
+        return response()->json($notices->map(fn (MeetingNotice $n) => [
+            'id' => $n->id,
+            'meeting_id' => (string) $n->meeting_id,
+            'kind' => $n->kind,
+            'topic' => $n->topic,
+            'date' => $n->date,
+            'time' => $n->time,
+            'location' => $n->location,
+            'previous' => $n->previous,
+        ])->values());
     }
 }

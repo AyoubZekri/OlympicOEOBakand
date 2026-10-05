@@ -29,6 +29,7 @@ class AlertsController extends Controller
         'department_meetings',
         'meeting_attendees',
         'meeting_decisions',
+        'meeting_notices',
     ];
 
     public function version()

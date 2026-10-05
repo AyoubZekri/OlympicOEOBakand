@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Meeting;
+use App\Models\MeetingNotice;
 use Illuminate\Http\Request;
 
 class MeetingController extends Controller
@@ -104,6 +105,9 @@ class MeetingController extends Controller
             'points' => 'nullable|array',
         ]);
 
+        $before = MeetingNotice::snapshot($meeting);
+        $invitedBefore = $this->invitedIds($meeting);
+
         $meeting->update($validated);
 
         if (array_key_exists('attendees', $validated) && is_array($validated['attendees'])) {
@@ -124,13 +128,46 @@ class MeetingController extends Controller
             }
         }
 
+        $this->announceChange($meeting->fresh(), $before, $invitedBefore);
+
         return response()->json($meeting);
     }
 
     public function destroy(Meeting $meeting)
     {
+        // The invited members are told it will not take place (not for a meeting already held)
+        if (($meeting->date ? substr((string) $meeting->date, 0, 10) : '') >= now('Africa/Algiers')->toDateString()) {
+            MeetingNotice::record($meeting, 'deleted', $this->invitedIds($meeting));
+        }
         \DB::table('meeting_attendees')->where('meeting_id', $meeting->id)->delete();
         $meeting->delete();
         return response()->json(null, 204);
+    }
+
+    /** The member ids invited to the meeting */
+    private function invitedIds(Meeting $meeting): array
+    {
+        return \DB::table('meeting_attendees')->where('meeting_id', $meeting->id)->pluck('member_id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
+     * Tells the members concerned what changed: the date, time, place or topic (to those still invited),
+     * and to those taken off the list that they are no longer invited. An attendance or a point is not announced here.
+     */
+    private function announceChange(Meeting $meeting, array $before, array $invitedBefore): void
+    {
+        $after = MeetingNotice::snapshot($meeting);
+        $invitedAfter = $this->invitedIds($meeting);
+
+        $changed = array_filter(array_keys($after), fn ($k) => $before[$k] !== $after[$k]);
+        if ($changed) {
+            // Those just invited get "invited" from their meetings list: only the ones already invited are told of the change
+            MeetingNotice::record($meeting, 'updated', array_intersect($invitedAfter, $invitedBefore), $before);
+        }
+
+        $removed = array_diff($invitedBefore, $invitedAfter);
+        if ($removed && ($after['date'] ?? '') >= now('Africa/Algiers')->toDateString()) {
+            MeetingNotice::record($meeting, 'uninvited', $removed);
+        }
     }
 }
