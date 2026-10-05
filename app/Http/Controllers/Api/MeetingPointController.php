@@ -124,6 +124,8 @@ class MeetingPointController extends Controller
                     'text' => $d->decision_text,
                     'category' => $d->category,
                     'type' => $d->type,
+                    // A decision of several tasks: each task and whether it is done
+                    'checklist_items' => collect($d->checklist_items ?? [])->map(fn ($i) => ['text' => (string) ($i['text'] ?? ''), 'checked' => (bool) ($i['checked'] ?? false)])->filter(fn ($i) => $i['text'] !== '')->values(),
                     'deadline' => $d->deadline ? substr((string) $d->deadline, 0, 10) : null,
                     'progress' => (int) ($d->progress ?? 0),
                     'execution_status' => $d->execution_status,

@@ -29,7 +29,8 @@ class MyMeetingsTest extends TestCase
             'points' => ['ميزانية الموسم']]);
         \DB::table('meeting_attendees')->insert([['meeting_id' => $meeting->id, 'member_id' => $me->id], ['meeting_id' => $meeting->id, 'member_id' => $mate->id]]);
         Meeting::create(['topic' => 'اجتماع آخر', 'date' => '2026-10-06', 'time' => '10:00', 'location' => 'x']);
-        Decision::create(['meeting_id' => $meeting->id, 'decision_text' => 'تجهيز الملعب', 'category' => 'تنظيمي', 'assignee_ids' => [(string) $me->id], 'deadline' => '2026-10-10', 'progress' => 20]);
+        Decision::create(['meeting_id' => $meeting->id, 'decision_text' => 'تجهيز الملعب', 'category' => 'تنظيمي', 'assignee_ids' => [(string) $me->id], 'deadline' => '2026-10-10', 'progress' => 20,
+            'checklist_items' => [['id' => 'a', 'text' => 'قص العشب', 'checked' => true], ['id' => 'b', 'text' => 'طلاء الخطوط', 'checked' => false]]]);
 
         // Sending points: the invited members, not the others
         $this->getJson('/api/meetings/mine')->assertUnauthorized();
@@ -54,6 +55,7 @@ class MyMeetingsTest extends TestCase
         $this->assertSame([['ميزانية الموسم', null, false], ['برنامج التحضير البدني', 'سمير بن', true], ['تجديد الأقمصة', 'ياسين كريم', false]],
             collect($m['points'])->map(fn ($p) => [$p['text'], $p['author'], $p['mine']])->all());
         $this->assertSame(['تجهيز الملعب', ['سمير بن'], true, 20], [$m['decisions'][0]['text'], $m['decisions'][0]['assignees'], $m['decisions'][0]['mine'], $m['decisions'][0]['progress']]);
+        $this->assertSame([['text' => 'قص العشب', 'checked' => true], ['text' => 'طلاء الخطوط', 'checked' => false]], $m['decisions'][0]['checklist_items']);
 
         // Only the sender removes their point
         $theirs = $m['points'][2]['id'];
