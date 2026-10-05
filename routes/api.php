@@ -200,6 +200,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Travels (travel_itineraries)
     Route::get('/travels/mine', [\App\Http\Controllers\Api\TravelItineraryController::class, 'mine']);
+    Route::get('/travels/mine/notices', [\App\Http\Controllers\Api\TravelItineraryController::class, 'myNotices']);
     Route::get('/travels', [\App\Http\Controllers\Api\TravelItineraryController::class, 'index']);
     Route::get('/travels/options', [\App\Http\Controllers\Api\TravelItineraryController::class, 'options']);
     Route::post('/travels/create', [\App\Http\Controllers\Api\TravelItineraryController::class, 'store']);

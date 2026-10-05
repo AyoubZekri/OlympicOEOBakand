@@ -131,4 +131,43 @@ class TravelItineraryTest extends TestCase
 
         $this->actingAs(User::factory()->create())->getJson('/api/travels/mine')->assertOk()->assertJsonCount(0, 'data');
     }
+
+    public function test_the_members_are_told_when_a_trip_changes_is_deleted_or_they_are_taken_off(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 5)->setTime(10, 0));
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $me = Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
+        $mate = Individual::create(['type' => 'player', 'first_name' => 'ياسين', 'last_name' => 'كريم', 'user_id' => $other->id]);
+        $notices = fn (User $u) => $this->actingAs($u)->getJson('/api/travels/mine/notices')->assertOk()->json();
+
+        $id = $this->actingAs($this->admin)->postJson('/api/travels/create', [
+            'destination' => 'وهران', 'departure_time' => '2026-10-08 08:00', 'return_time' => '2026-10-09 20:00',
+            'departure_location' => 'مقر النادي', 'player_ids' => [$me->id, $mate->id],
+        ])->assertCreated()->json('data.id');
+        $this->assertSame([], $notices($user)); // a new trip: "added" comes from the trips list
+
+        // A new departure time and meeting point: both told, with the old values
+        $this->actingAs($this->admin)->postJson('/api/travels/update', ['id' => $id, 'departure_time' => '2026-10-08 06:30', 'departure_location' => 'الملعب'])->assertOk();
+        $n = $notices($user)[0];
+        $this->assertSame(['updated', '2026-10-08 06:30', 'الملعب'], [$n['kind'], $n['departure_time'], $n['departure_location']]);
+        $this->assertSame(['2026-10-08 08:00', 'مقر النادي'], [$n['previous']['departure_time'], $n['previous']['departure_location']]);
+
+        // Schedule / notes only: nothing new
+        $this->actingAs($this->admin)->postJson('/api/travels/update', ['id' => $id, 'special_notes' => 'إحضار البطاقة', 'schedule_meal' => '12:30'])->assertOk();
+        $this->assertSame(1, \App\Models\TravelNotice::count());
+
+        // Taken off: told; the one still on it is not
+        $this->actingAs($this->admin)->postJson('/api/travels/update', ['id' => $id, 'player_ids' => [$me->id]])->assertOk();
+        $this->assertSame('removed', $notices($other)[0]['kind']);
+        $this->assertSame('updated', $notices($user)[0]['kind']);
+
+        // Deleted: still announced
+        $this->actingAs($this->admin)->postJson('/api/travels/delete', ['id' => $id])->assertOk();
+        $this->assertSame(['deleted', 'وهران'], [$notices($user)[0]['kind'], $notices($user)[0]['destination']]);
+
+        // Once the trip would be over: no longer announced
+        $this->travelTo(now()->setDate(2026, 10, 11));
+        $this->assertSame([], $notices($user));
+    }
 }

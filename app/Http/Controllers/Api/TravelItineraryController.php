@@ -7,6 +7,7 @@ use App\Models\Individual;
 use App\Models\Matchs;
 use App\Models\Team;
 use App\Models\TravelItinerary;
+use App\Models\TravelNotice;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
@@ -41,7 +42,10 @@ class TravelItineraryController extends Controller
     {
         $request->validate(['id' => 'required|exists:travel_itineraries,id']);
         $travel = TravelItinerary::findOrFail($request->input('id'));
+        $before = TravelNotice::snapshot($travel);
+        $membersBefore = TravelNotice::membersOf($travel);
         $travel->update($this->validated($request, true));
+        $this->announceChange($travel->fresh(), $before, $membersBefore);
 
         return response()->json(['status' => 'success', 'data' => $this->presentOne($travel)]);
     }
@@ -49,7 +53,12 @@ class TravelItineraryController extends Controller
     public function destroy(Request $request)
     {
         $request->validate(['id' => 'required|exists:travel_itineraries,id']);
-        TravelItinerary::findOrFail($request->input('id'))->delete();
+        $travel = TravelItinerary::findOrFail($request->input('id'));
+        // Those on the trip are told it will not take place (not for a trip already back)
+        if (!$this->isOver($travel)) {
+            TravelNotice::record($travel, 'deleted', TravelNotice::membersOf($travel));
+        }
+        $travel->delete();
 
         return response()->json(['status' => 'success']);
     }
@@ -225,5 +234,69 @@ class TravelItineraryController extends Controller
         $people = $this->people($travels->flatMap(fn ($t) => array_merge($t->staff_ids ?? [], $t->player_ids ?? []))->unique()->values()->all());
 
         return response()->json(['status' => 'success', 'data' => $travels->map(fn ($t) => array_merge($this->present($t, $people), ['my_role' => $roleOf($t)]))]);
+    }
+
+    /** The trip is over: back already (or left more than a day ago without a return time) */
+    private function isOver(TravelItinerary $t): bool
+    {
+        $end = $t->return_time ?: ($t->departure_time ? CarbonImmutable::parse($t->departure_time)->addDay() : null);
+
+        return $end !== null && CarbonImmutable::parse($end)->isPast();
+    }
+
+    /**
+     * Tells the members concerned what changed: the departure / return / destination / meeting point / transport
+     * (to those still on the trip), and to those taken off it that they are no longer on it.
+     * Those just added get "added" from their trips list.
+     */
+    private function announceChange(TravelItinerary $travel, array $before, array $membersBefore): void
+    {
+        if ($this->isOver($travel)) {
+            return;
+        }
+        $after = TravelNotice::snapshot($travel);
+        $membersAfter = TravelNotice::membersOf($travel);
+
+        $changed = array_filter(array_keys($after), fn ($k) => $before[$k] !== $after[$k]);
+        if ($changed) {
+            TravelNotice::record($travel, 'updated', array_intersect($membersAfter, $membersBefore), array_intersect_key($before, array_flip($changed)));
+        }
+        $removed = array_diff($membersBefore, $membersAfter);
+        if ($removed) {
+            TravelNotice::record($travel, 'removed', $removed);
+        }
+    }
+
+    /**
+     * Personal space: what happened lately to my trips (changed, deleted, taken off), the latest per trip,
+     * for the trips not over yet and announced in the last 14 days.
+     */
+    public function myNotices(Request $request)
+    {
+        $memberIds = Individual::where('user_id', $request->user()->id)->pluck('id')->map(fn ($id) => (int) $id);
+        if ($memberIds->isEmpty()) {
+            return response()->json([]);
+        }
+        $now = now()->format('Y-m-d H:i');
+
+        $notices = TravelNotice::where('created_at', '>=', now()->subDays(14))
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (TravelNotice $n) => collect($n->member_ids)->map(fn ($id) => (int) $id)->intersect($memberIds)->isNotEmpty())
+            ->filter(fn (TravelNotice $n) => !$n->departure_time || ($n->return_time ?: $n->departure_time) >= substr($now, 0, 10))
+            ->unique('travel_id')
+            ->values();
+
+        return response()->json($notices->map(fn (TravelNotice $n) => [
+            'id' => $n->id,
+            'travel_id' => $n->travel_id,
+            'kind' => $n->kind,
+            'destination' => $n->destination,
+            'departure_time' => $n->departure_time,
+            'return_time' => $n->return_time,
+            'departure_location' => $n->departure_location,
+            'transport_method' => $n->transport_method,
+            'previous' => $n->previous,
+        ])->values());
     }
 }
