@@ -167,19 +167,23 @@ class TaskSystemTest extends TestCase
         $this->actingAs($this->reviewer)->getJson('/api/tasks?scope=review')->assertJsonCount(0, 'data');
     }
 
-    public function test_scopes_archive_and_stats(): void
+    public function test_scopes_delete_for_good_and_stats(): void
     {
         $task = $this->createTask(['due_at' => now()->subHour()->toDateTimeString()]);
+        $this->createTask(['due_at' => now()->subHours(2)->toDateTimeString()]);
         $this->createTask();
 
-        $this->actingAs($this->worker)->getJson('/api/tasks?scope=my')->assertOk()->assertJsonCount(2, 'data')
+        $this->actingAs($this->worker)->getJson('/api/tasks?scope=my')->assertOk()->assertJsonCount(3, 'data')
             ->assertJsonPath('data.0.is_overdue', true);
         $this->actingAs($this->worker)->getJson('/api/tasks?scope=all')->assertForbidden();
 
+        // Deleted for good: no archive, nothing to restore, its history gone with it
         $this->actingAs($this->manager)->postJson('/api/tasks/delete', ['id' => $task['id']])->assertOk();
-        $this->actingAs($this->manager)->getJson('/api/tasks?scope=all')->assertJsonCount(1, 'data');
-        $this->actingAs($this->manager)->getJson('/api/tasks?scope=archive')->assertJsonCount(1, 'data');
-        $this->actingAs($this->manager)->postJson('/api/tasks/restore', ['id' => $task['id']])->assertOk();
+        $this->actingAs($this->manager)->getJson('/api/tasks?scope=all')->assertJsonCount(2, 'data');
+        $this->actingAs($this->manager)->getJson('/api/tasks?scope=archive')->assertJsonCount(0, 'data');
+        $this->assertDatabaseMissing('tasks', ['id' => $task['id']]);
+        $this->assertDatabaseMissing('task_status_history', ['task_id' => $task['id']]);
+        $this->actingAs($this->manager)->postJson('/api/tasks/restore', ['id' => $task['id']])->assertNotFound();
 
         $stats = $this->actingAs($this->manager)->getJson('/api/tasks/stats')->assertOk()->json('data');
         $this->assertSame(2, $stats['total']);
@@ -308,6 +312,11 @@ class TaskSystemTest extends TestCase
         $this->assertSame($kickoff->subHours(3)->format('Y-m-d H:i'), $task->starts_at->format('Y-m-d H:i'));
         $this->assertNull($task->reviewer_id);
         $this->assertTrue($task->requires_approval);
+
+        // Deleted: gone from every list, and not made a second time for the same match
+        $this->actingAs($this->manager)->postJson('/api/tasks/delete', ['id' => $task->id])->assertOk();
+        $this->actingAs($this->manager)->getJson('/api/tasks?scope=all')->assertJsonCount(0, 'data');
+        $this->assertSame(0, TaskGenerator::fromEvent('match.created', 'match:7', $kickoff, 'مباراة ضد النجم'));
     }
 
     public function test_task_linked_to_an_upcoming_match_or_training(): void

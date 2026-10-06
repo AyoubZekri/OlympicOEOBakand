@@ -145,8 +145,19 @@ class TaskController extends Controller
             return response()->json(['message' => 'لا تملك صلاحية حذف هذه المهمة'], 403);
         }
 
-        TaskWorkflow::record($task, 'deleted', $task->status, $task->status, $user->id);
-        $task->delete();
+        // Deleted for good (no archive). A task made by a periodic / automatic task is only hidden for ever:
+        // its trace keeps that task from being made a second time.
+        if ($task->template_id) {
+            TaskWorkflow::record($task, 'deleted', $task->status, $task->status, $user->id);
+            $task->delete();
+        } else {
+            foreach ($task->attachments as $attachment) {
+                if ($attachment->path) {
+                    Storage::disk('public')->delete($attachment->path);
+                }
+            }
+            $task->forceDelete(); // its history and attachments go with it
+        }
 
         return response()->json(['status' => 'success']);
     }
