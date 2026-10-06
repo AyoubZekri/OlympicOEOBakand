@@ -16,7 +16,12 @@ class AlertsVersionTest extends TestCase
     public function test_the_version_changes_when_something_is_added_edited_or_deleted(): void
     {
         Cache::flush();
-        $this->getJson('/api/alerts/version')->assertUnauthorized();
+        // Public, and not a single database query
+        \Illuminate\Support\Facades\DB::flushQueryLog();
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $this->getJson('/api/alerts/version')->assertOk()->assertJsonStructure(['version']);
+        $this->assertSame([], \Illuminate\Support\Facades\DB::getQueryLog());
+        \Illuminate\Support\Facades\DB::disableQueryLog();
 
         $user = User::factory()->create();
         $version = fn () => $this->actingAs($user)->getJson('/api/alerts/version')->assertOk()->json('version');
@@ -149,19 +154,23 @@ class AlertsVersionTest extends TestCase
         $this->assertNotSame($v2, $version()); // the exam set
     }
 
-    public function test_a_table_created_after_the_list_was_cached_is_watched_soon_after(): void
+    public function test_all_the_alerts_lists_come_in_one_request(): void
     {
-        Cache::flush();
+        $this->getJson('/api/alerts/all')->assertUnauthorized();
+
         $user = User::factory()->create();
-        $version = fn () => $this->actingAs($user)->getJson('/api/alerts/version')->assertOk()->json('version');
+        $me = \App\Models\Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
+        \App\Models\AppAbsence::create(['player_id' => $me->id, 'absence_type' => 'غائب غير مبرر', 'event_category' => 'تدريب', 'event_date' => now()->toDateString(), 'justification_status' => 'none']);
 
-        \Illuminate\Support\Facades\Schema::drop('medical_notices'); // not migrated yet
-        $v0 = $version();
+        $paths = json_encode(['abs' => '/absences/mine', 'tasks' => '/tasks?scope=my', 'nope' => '/users']);
+        $out = $this->actingAs($user)->getJson('/api/alerts/all?p=' . urlencode($paths))->assertOk()->json();
 
-        (require database_path('migrations/2026_10_05_140000_create_medical_notices_table.php'))->up(); // migrated now
-        $this->travel(6)->minutes();
-        $v1 = $version();
-        \App\Models\MedicalNotice::create(['record_id' => 1, 'player_id' => 1, 'kind' => 'deleted']);
-        $this->assertNotSame($v1, $version());
+        // the same answer as the list's own route
+        $this->assertSame(200, $out['abs']['status']);
+        $this->assertSame($this->actingAs($user)->getJson('/api/absences/mine')->json(), $out['abs']['data']);
+        $this->assertSame(200, $out['tasks']['status']);
+        // only the alerts' lists
+        $this->assertSame(404, $out['nope']['status']);
+        $this->assertNull($out['nope']['data']);
     }
 }

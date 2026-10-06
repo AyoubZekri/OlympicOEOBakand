@@ -53,6 +53,11 @@ return [
     'expiration' => null,
 
     /*
+    | Writing the token's last use on every request costs a database write each time: off (nothing reads it)
+    */
+    'last_used_at' => env('SANCTUM_LAST_USED_AT', false),
+
+    /*
     |--------------------------------------------------------------------------
     | Token Prefix
     |--------------------------------------------------------------------------

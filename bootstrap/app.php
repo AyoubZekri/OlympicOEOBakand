@@ -12,7 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Every change through the API raises the alerts' version (the pages reload their alerts)
+        $middleware->appendToGroup('api', \App\Http\Middleware\BumpAlertsVersion::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

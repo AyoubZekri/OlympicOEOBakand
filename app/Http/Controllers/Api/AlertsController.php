@@ -3,89 +3,70 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use App\Services\AlertsVersion;
+use Illuminate\Http\Request;
 
 /**
- * A very light "has anything changed?" for the alerts: the page asks every few seconds,
- * and reloads its alerts only when the answer changes (no page refresh needed).
+ * The alerts, with as little work as possible for the server:
+ * - version: "has anything changed?", read from a file (no database), asked every few seconds;
+ * - all: everything the alerts are made from, in one request (instead of one request per list).
  */
 class AlertsController extends Controller
 {
-    /** The tables the alerts are made from */
-    private const TABLES = [
-        'tasks',
-        'task_status_history',
-        'task_attachments',
-        'disciplinary_cases',
-        'disciplinary_actions',
-        'individuals', // a member moved to another category: their sessions / matches change
-        'teams',
-        'training_sessions',
-        'training_session_notices',
-        'app_absences',
-        'matches',
-        'match_callups',
-        'match_notices',
-        'match_goals',
-        'player_evaluations',
-        'administrative_match_reports',
-        'hearing_attendees',
-        'department_meetings',
-        'meeting_attendees',
-        'meeting_decisions',
-        'meeting_notices',
-        'travel_itineraries',
-        'travel_notices',
-        'player_medical_records',
-        'medical_notices',
-        'debts',
-        'debt_repayments',
-        'payment_expenses', // the purchases on credit
-        'credit_payments',
+    /** The lists the alerts are made from (read only), the only ones "all" gives */
+    private const SOURCES = [
+        '/tasks',
+        '/disciplinary/mine', '/disciplinary',
+        '/training-sessions/mine', '/training-sessions', '/training-sessions/mine/notices',
+        '/matches/mine', '/matches', '/matches/mine/notices',
+        '/absences/mine', '/absences',
+        '/meetings/mine', '/meetings', '/decisions', '/meetings/mine/notices',
+        '/travels/mine', '/travels', '/travels/mine/notices',
+        '/medical-records/mine', '/medical-records', '/medical-records/mine/notices',
+        '/debts', '/payments/credit',
     ];
 
     public function version()
     {
-        $parts = [];
-        foreach ($this->tables() as $table => $hasUpdatedAt) {
-            // Count + last id: rows added or deleted; last updated_at: rows edited
-            try {
-                $row = DB::table($table)->selectRaw(
-                    'count(*) as c, max(id) as m' . ($hasUpdatedAt ? ', max(updated_at) as u' : '')
-                )->first();
-                $parts[] = $table . ':' . $row->c . ':' . $row->m . ':' . ($row->u ?? '');
-            } catch (\Throwable $e) {
-                // a table changed since it was listed: list again next time, the others still tell
-                Cache::forget($this->tablesKey());
-            }
-        }
-
-        return response()->json(['version' => md5(implode('|', $parts))]);
-    }
-
-    /** The cache key of the table list: a new table in TABLES lists them again at once */
-    private function tablesKey(): string
-    {
-        return 'alerts.version.tables.' . md5(implode(',', self::TABLES));
+        return response()->json(['version' => AlertsVersion::current()]);
     }
 
     /**
-     * The existing tables, and whether each has updated_at (asked to the database every 5 minutes,
-     * so a table created by a migration is watched soon after, without clearing the cache)
+     * Several lists in one request: ?p={"key":"/path?query",…} → {"key":{"status":200,"data":…},…}.
+     * Each list is answered by its own route (same rights, same data), all inside this one request.
      */
-    private function tables(): array
+    public function all(Request $request)
     {
-        return Cache::remember($this->tablesKey(), 300, function () {
-            $tables = [];
-            foreach (self::TABLES as $table) {
-                if (Schema::hasTable($table)) {
-                    $tables[$table] = Schema::hasColumn($table, 'updated_at');
-                }
-            }
+        $paths = json_decode((string) $request->query('p', '{}'), true);
+        if (!is_array($paths)) {
+            return response()->json(['message' => 'طلب غير صالح'], 422);
+        }
 
-            return $tables;
-        });
+        $router = app('router');
+        $out = [];
+        foreach (array_slice($paths, 0, 40, true) as $key => $path) {
+            $route = parse_url((string) $path, PHP_URL_PATH);
+            if (!in_array($route, self::SOURCES, true)) {
+                $out[$key] = ['status' => 404, 'data' => null];
+                continue;
+            }
+            parse_str((string) parse_url((string) $path, PHP_URL_QUERY), $query);
+
+            $sub = Request::create('/api' . $route, 'GET', $query);
+            $sub->headers->replace($request->headers->all());
+            $sub->setUserResolver($request->getUserResolver());
+
+            try {
+                $response = $router->dispatch($sub);
+                $out[$key] = ['status' => $response->getStatusCode(), 'data' => json_decode($response->getContent(), true)];
+            } catch (\Throwable $e) {
+                $out[$key] = ['status' => 500, 'data' => null];
+            }
+        }
+
+        // Back to this request
+        app()->instance('request', $request);
+
+        return response()->json($out);
     }
 }
