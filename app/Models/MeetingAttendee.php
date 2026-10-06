@@ -14,6 +14,9 @@ class MeetingAttendee extends Model
 
     public $timestamps = false;
 
+    /** Saving (or deleting) one marks its meeting updated: the alerts see the change at once */
+    protected $touches = ['meetingId'];
+
     public function meetingId()
     {
         return $this->belongsTo(DepartmentMeeting::class, 'meeting_id');

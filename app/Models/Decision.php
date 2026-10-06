@@ -11,6 +11,9 @@ class Decision extends Model
 
     public $timestamps = false;
 
+    /** Saving (or deleting) one marks its meeting updated: the alerts see the change at once */
+    protected $touches = ['meeting'];
+
     protected $table = 'meeting_decisions';
 
     protected $fillable = [

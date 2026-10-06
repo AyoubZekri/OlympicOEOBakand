@@ -14,6 +14,9 @@ class AdministrativeMatchReport extends Model
 
     public $timestamps = false;
 
+    /** Saving the report (new or edited) marks its match updated: the alerts see it at once */
+    protected $touches = ['matchId'];
+
     public function matchId()
     {
         return $this->belongsTo('App\Models\Matchs', 'match_id');

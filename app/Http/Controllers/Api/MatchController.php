@@ -172,6 +172,9 @@ class MatchController extends Controller
                 }
             }
 
+            // Goals and substitutions are saved apart: the match is marked updated, the alerts see them at once
+            $match->touch();
+
             DB::commit();
             return response()->json([
                 'status' => 'success',

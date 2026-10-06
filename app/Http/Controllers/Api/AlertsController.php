@@ -20,6 +20,8 @@ class AlertsController extends Controller
         'task_attachments',
         'disciplinary_cases',
         'disciplinary_actions',
+        'individuals', // a member moved to another category: their sessions / matches change
+        'teams',
         'training_sessions',
         'training_session_notices',
         'app_absences',
@@ -38,6 +40,10 @@ class AlertsController extends Controller
         'travel_notices',
         'player_medical_records',
         'medical_notices',
+        'debts',
+        'debt_repayments',
+        'payment_expenses', // the purchases on credit
+        'credit_payments',
     ];
 
     public function version()
