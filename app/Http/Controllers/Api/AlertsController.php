@@ -26,6 +26,10 @@ class AlertsController extends Controller
         'matches',
         'match_callups',
         'match_notices',
+        'match_goals',
+        'player_evaluations',
+        'administrative_match_reports',
+        'hearing_attendees',
         'department_meetings',
         'meeting_attendees',
         'meeting_decisions',
@@ -41,19 +45,33 @@ class AlertsController extends Controller
         $parts = [];
         foreach ($this->tables() as $table => $hasUpdatedAt) {
             // Count + last id: rows added or deleted; last updated_at: rows edited
-            $row = DB::table($table)->selectRaw(
-                'count(*) as c, max(id) as m' . ($hasUpdatedAt ? ', max(updated_at) as u' : '')
-            )->first();
-            $parts[] = $table . ':' . $row->c . ':' . $row->m . ':' . ($row->u ?? '');
+            try {
+                $row = DB::table($table)->selectRaw(
+                    'count(*) as c, max(id) as m' . ($hasUpdatedAt ? ', max(updated_at) as u' : '')
+                )->first();
+                $parts[] = $table . ':' . $row->c . ':' . $row->m . ':' . ($row->u ?? '');
+            } catch (\Throwable $e) {
+                // a table changed since it was listed: list again next time, the others still tell
+                Cache::forget($this->tablesKey());
+            }
         }
 
         return response()->json(['version' => md5(implode('|', $parts))]);
     }
 
-    /** The existing tables, and whether each has updated_at (asked to the database once a day) */
+    /** The cache key of the table list: a new table in TABLES lists them again at once */
+    private function tablesKey(): string
+    {
+        return 'alerts.version.tables.' . md5(implode(',', self::TABLES));
+    }
+
+    /**
+     * The existing tables, and whether each has updated_at (asked to the database every 5 minutes,
+     * so a table created by a migration is watched soon after, without clearing the cache)
+     */
     private function tables(): array
     {
-        return Cache::remember('alerts.version.tables', 86400, function () {
+        return Cache::remember($this->tablesKey(), 300, function () {
             $tables = [];
             foreach (self::TABLES as $table) {
                 if (Schema::hasTable($table)) {

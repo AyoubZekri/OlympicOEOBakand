@@ -14,6 +14,9 @@ class DisciplinaryAction extends Model
 
     public $timestamps = false;
 
+    /** Saving an action (reply, decision, document) marks its case updated: the alerts see the change at once */
+    protected $touches = ['caseId'];
+
     public function caseId()
     {
         return $this->belongsTo(DisciplinaryCase::class, 'case_id');
