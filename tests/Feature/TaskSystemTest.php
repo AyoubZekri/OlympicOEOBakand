@@ -81,11 +81,9 @@ class TaskSystemTest extends TestCase
     {
         $task = $this->createTask();
 
-        // Changing the status is open to anyone who can see the task (here the creator);
-        // nobody reviews their own task, even with the review permission
+        // Changing the status is open to anyone who can see the task (here the creator)
         $this->act($this->manager, $task['id'], 'start')->assertOk();
         $this->act($this->worker, $task['id'], 'submit')->assertOk();
-        $this->act($this->worker, $task['id'], 'approve')->assertForbidden();
 
         // Without the review permission
         $plain = User::factory()->create(['role_id' => Role::create(['name' => 'plain', 'type' => 'custom', 'permissions' => json_encode(['_v' => 2, 'tasks' => ['view' => true]])])->id]);
@@ -157,14 +155,72 @@ class TaskSystemTest extends TestCase
         $this->act($this->worker, $task['id'], 'submit');
         $this->actingAs($this->reviewer)->getJson('/api/tasks?scope=review')->assertJsonCount(1, 'data');
         $this->actingAs($this->reviewer)->getJson("/api/tasks/{$task['id']}")->assertOk();
-        // The assignee's own tasks are not in their review list
-        $this->actingAs($this->worker)->getJson('/api/tasks?scope=review')->assertJsonCount(0, 'data');
+        // The assignee with the review permission sees their own task waiting too
+        $this->actingAs($this->worker)->getJson('/api/tasks?scope=review')->assertJsonCount(1, 'data');
 
         $this->act($this->manager, $task['id'], 'return', ['reason' => 'ناقص'])->assertOk()
             ->assertJsonPath('data.reviewer_id', $this->manager->id);
         // Still listed for the one who reviewed it
         $this->actingAs($this->manager)->getJson('/api/tasks?scope=review')->assertJsonCount(1, 'data');
         $this->actingAs($this->reviewer)->getJson('/api/tasks?scope=review')->assertJsonCount(0, 'data');
+    }
+
+    public function test_the_assignee_with_the_review_permission_reviews_their_own_task(): void
+    {
+        // With the review permission: approves their own task, and becomes its reviewer
+        $theirs = $this->createTask(['assignee_id' => $this->reviewer->id]);
+        $this->act($this->reviewer, $theirs['id'], 'start')->assertOk();
+        $this->act($this->reviewer, $theirs['id'], 'submit')->assertOk();
+        $this->act($this->reviewer, $theirs['id'], 'approve')->assertOk()
+            ->assertJsonPath('data.status', 'approved')->assertJsonPath('data.reviewer_id', $this->reviewer->id);
+
+        // Without it: not
+        $plain = User::factory()->create(['role_id' => Role::create(['name' => 'doer', 'type' => 'custom', 'permissions' => json_encode(['_v' => 2, 'tasks' => ['view' => true]])])->id]);
+        $own = $this->createTask(['assignee_id' => $plain->id]);
+        $this->act($plain, $own['id'], 'start')->assertOk();
+        $this->act($plain, $own['id'], 'submit')->assertOk();
+        $this->act($plain, $own['id'], 'approve')->assertForbidden();
+    }
+
+    public function test_a_task_goes_back_a_step(): void
+    {
+        $task = $this->createTask(['requires_approval' => true]);
+        $this->act($this->worker, $task['id'], 'start')->assertOk();
+        $this->act($this->worker, $task['id'], 'reset')->assertOk()->assertJsonPath('data.status', 'assigned');
+        $this->act($this->worker, $task['id'], 'start')->assertOk();
+        $this->act($this->worker, $task['id'], 'submit')->assertOk();
+        $this->act($this->worker, $task['id'], 'withdraw')->assertOk()->assertJsonPath('data.status', 'in_progress')->assertJsonPath('data.completed_at', null);
+        $this->act($this->worker, $task['id'], 'submit')->assertOk();
+        $this->act($this->reviewer, $task['id'], 'approve')->assertOk();
+
+        // An approved task is reopened by who may review it, not by anyone
+        $plain = User::factory()->create(['role_id' => Role::create(['name' => 'doer2', 'type' => 'custom', 'permissions' => json_encode(['_v' => 2, 'tasks' => ['view' => true]])])->id]);
+        $own = $this->createTask(['assignee_id' => $plain->id]);
+        $this->act($this->manager, $own['id'], 'start');
+        $this->act($this->manager, $own['id'], 'submit');
+        $this->act($this->manager, $own['id'], 'approve');
+        $this->act($plain, $own['id'], 'reopen')->assertForbidden();
+        $this->act($this->reviewer, $task['id'], 'reopen')->assertOk()->assertJsonPath('data.status', 'in_progress');
+    }
+
+    public function test_who_manages_the_tasks_sets_any_status(): void
+    {
+        $task = $this->createTask(['requires_approval' => true]);
+
+        // Straight from new to done, then back to new
+        $this->act($this->manager, $task['id'], 'set', ['status' => 'approved'])->assertOk()
+            ->assertJsonPath('data.status', 'approved')->assertJsonPath('data.reviewer_id', $this->manager->id);
+        $this->act($this->manager, $task['id'], 'set', ['status' => 'assigned'])->assertOk()
+            ->assertJsonPath('data.status', 'assigned')->assertJsonPath('data.completed_at', null);
+        // Blocked and returned still ask for their reason
+        $this->act($this->manager, $task['id'], 'set', ['status' => 'blocked'])->assertStatus(422);
+        $this->act($this->manager, $task['id'], 'set', ['status' => 'blocked', 'reason' => 'financial'])->assertOk()->assertJsonPath('data.status', 'blocked');
+        $this->act($this->manager, $task['id'], 'set', ['status' => 'returned'])->assertStatus(422);
+        $this->act($this->manager, $task['id'], 'set', ['status' => 'returned', 'reason' => 'ناقص'])->assertOk()->assertJsonPath('data.status', 'returned');
+        $this->act($this->manager, $task['id'], 'set', ['status' => 'nope'])->assertStatus(422);
+
+        // Without the manage permission: the normal order only
+        $this->act($this->worker, $task['id'], 'set', ['status' => 'approved'])->assertForbidden();
     }
 
     public function test_scopes_delete_for_good_and_stats(): void

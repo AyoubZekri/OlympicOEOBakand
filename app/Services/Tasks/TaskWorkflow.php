@@ -13,16 +13,17 @@ use Illuminate\Support\Facades\DB;
  * then records the change in task_status_history.
  *
  *   assigned → in_progress → (blocked ⇄ in_progress) → in_review → approved | returned → in_progress
+ *   and back a step: in_progress → assigned (reset), in_review → in_progress (withdraw), approved → in_progress (reopen)
  *   A task that does not require approval goes straight from in_progress to approved.
- *   The reviewer is not chosen in advance: anyone with the tasks.review permission (other than the assignee)
+ *   The reviewer is not chosen in advance: anyone with the tasks.review permission (its assignee too)
  *   may approve or return a task, and becomes its reviewer.
  */
 class TaskWorkflow
 {
     /**
      * action => [allowed "from" statuses, "to" status, actor]
-     * actor "anyone": any user who can see the task (checked by the controller); "reviewer": the review permission,
-     * and never the task's own assignee.
+     * actor "anyone": any user who can see the task (checked by the controller); "reviewer": the review permission
+     * (the task's own assignee too, when they have it).
      */
     private const ACTIONS = [
         'start' => [['assigned', 'returned'], 'in_progress', 'anyone'],
@@ -31,6 +32,12 @@ class TaskWorkflow
         'submit' => [['in_progress'], 'in_review', 'anyone'],
         'approve' => [['in_review'], 'approved', 'reviewer'],
         'return' => [['in_review'], 'returned', 'reviewer'],
+        // Any status at once: who manages the tasks (see apply, "set")
+        'set' => [['assigned', 'in_progress', 'blocked', 'in_review', 'approved', 'returned'], null, 'manager'],
+        // Going back a step
+        'reset' => [['in_progress'], 'assigned', 'anyone'],
+        'withdraw' => [['in_review'], 'in_progress', 'anyone'],
+        'reopen' => [['approved'], 'in_progress', 'anyone'], // the review permission when the task needed a review
     ];
 
     public static function record(Task $task, string $action, ?string $from, ?string $to, ?int $userId, ?string $note = null): void
@@ -75,8 +82,17 @@ class TaskWorkflow
             if (!TaskPermissions::can($user, 'review')) {
                 throw new TaskWorkflowException('لا تملك صلاحية مراجعة المهام', 403);
             }
-            if ((int) $task->assignee_id === (int) $user->id) {
-                throw new TaskWorkflowException('لا يمكنك مراجعة مهمة مكلف بها', 403);
+        }
+        if ($actor === 'manager') {
+            if (!TaskPermissions::can($user, 'manage')) {
+                throw new TaskWorkflowException('لا تملك صلاحية تغيير حالة المهام بحرية', 403);
+            }
+            $to = (string) ($extra['status'] ?? '');
+            if (!in_array($to, $from, true)) {
+                throw new TaskWorkflowException('اختر حالة صحيحة', 422);
+            }
+            if ($to === $task->status) {
+                throw new TaskWorkflowException('المهمة في هذه الحالة أصلاً', 422);
             }
         }
 
@@ -135,6 +151,56 @@ class TaskWorkflow
                 $task->return_reason = $reason;
                 $task->completed_at = null;
                 $note = $reason;
+                break;
+
+            case 'withdraw':
+                // Taken back from the review: worked on again
+                $task->completed_at = null;
+                break;
+
+            case 'set':
+                // Who manages the tasks: straight to the chosen status; its own details follow it
+                if ($to === 'blocked') {
+                    $reason = $extra['reason'] ?? null;
+                    if (!in_array($reason, Task::BLOCK_REASONS, true)) {
+                        throw new TaskWorkflowException('اختر سبب التعطيل', 422);
+                    }
+                    $blockNote = trim((string) ($extra['note'] ?? ''));
+                    if ($reason === 'other' && $blockNote === '') {
+                        throw new TaskWorkflowException('اكتب سبب التعطيل', 422);
+                    }
+                    $task->block_reason = $reason;
+                    $task->block_note = $blockNote ?: null;
+                    $note = $blockNote ?: $reason;
+                } else {
+                    $task->block_reason = null;
+                    $task->block_note = null;
+                }
+                if ($to === 'returned') {
+                    $reason = trim((string) ($extra['reason'] ?? ''));
+                    if ($reason === '') {
+                        throw new TaskWorkflowException('اكتب سبب الإرجاع للتصحيح', 422);
+                    }
+                    $task->return_reason = $reason;
+                    $task->reviewer_id = $user->id;
+                    $note = $reason;
+                } elseif ($to === 'approved') {
+                    $task->return_reason = null;
+                }
+                $task->completed_at = in_array($to, ['in_review', 'approved'], true) ? ($task->completed_at ?? now()) : null;
+                $task->approved_at = $to === 'approved' ? now() : null;
+                if ($to === 'approved' && $task->requires_approval) {
+                    $task->reviewer_id = $user->id;
+                }
+                break;
+
+            case 'reopen':
+                // An approved task is reopened by who may approve it (anyone when it needed no review)
+                if ($task->requires_approval && !TaskPermissions::can($user, 'review')) {
+                    throw new TaskWorkflowException('لا تملك صلاحية إعادة فتح مهمة معتمدة', 403);
+                }
+                $task->completed_at = null;
+                $task->approved_at = null;
                 break;
         }
 

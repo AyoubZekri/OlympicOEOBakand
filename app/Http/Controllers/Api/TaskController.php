@@ -41,15 +41,15 @@ class TaskController extends Controller
 
         $query = Task::query()->with(['assignee:id,name', 'reviewer:id,name', 'creator:id,name'])->withCount('attachments');
         match ($scope) {
-            'review' => $query->where('assignee_id', '!=', $user->id)
-                ->where(fn (Builder $q) => $q->where('status', 'in_review')->orWhere('reviewer_id', $user->id)),
+            // Waiting for a review (their own tasks too), or reviewed by them
+            'review' => $query->where(fn (Builder $q) => $q->where('status', 'in_review')->orWhere('reviewer_id', $user->id)),
             'created' => $query->where('created_by', $user->id),
             'auto' => $query->where(function (Builder $q) use ($user, $canReview) {
                 $q->where('assignee_id', $user->id)
                     ->orWhere('created_by', $user->id)
                     ->orWhere('reviewer_id', $user->id);
                 if ($canReview) {
-                    $q->orWhere(fn (Builder $r) => $r->where('status', 'in_review')->where('assignee_id', '!=', $user->id));
+                    $q->orWhere('status', 'in_review');
                 }
             }),
             'all' => null,
@@ -184,6 +184,7 @@ class TaskController extends Controller
             'action' => 'required|string',
             'reason' => 'nullable|string',
             'note' => 'nullable|string',
+            'status' => 'nullable|string', // "set": the status chosen
         ]);
         $user = $request->user();
         $task = Task::findOrFail($request->input('id'));
@@ -197,7 +198,7 @@ class TaskController extends Controller
         }
 
         try {
-            $task = TaskWorkflow::apply($task, $request->input('action'), $user, $request->only(['reason', 'note']));
+            $task = TaskWorkflow::apply($task, $request->input('action'), $user, $request->only(['reason', 'note', 'status']));
         } catch (TaskWorkflowException $e) {
             return response()->json(['message' => $e->getMessage()], $e->status());
         }
