@@ -143,6 +143,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/disciplinary', [\App\Http\Controllers\Api\DisciplinaryController::class, 'index']);
     // Personal space: the signed-in user's own disciplinary actions
     Route::get('/disciplinary/mine', [\App\Http\Controllers\Api\DisciplinaryController::class, 'mine']);
+    // The hearings the signed-in user runs (their officer)
+    Route::get('/disciplinary/officiating', [\App\Http\Controllers\Api\DisciplinaryController::class, 'officiating']);
     Route::post('/disciplinary/mine/reply', [\App\Http\Controllers\Api\DisciplinaryController::class, 'reply']);
     Route::post('/disciplinary/create', [\App\Http\Controllers\Api\DisciplinaryController::class, 'store']);
     Route::post('/disciplinary/update', [\App\Http\Controllers\Api\DisciplinaryController::class, 'update']);
@@ -203,6 +205,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'show']);
     Route::post('/player-clearance', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'updateOrCreate']);
     Route::delete('/player-clearance/{player_id}', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'destroy']);
+    // Clearance in three steps: every member's card, a department's signature (and its withdrawal), closing the file
+    Route::get('/player-clearances', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'index']);
+    Route::post('/player-clearance/{player_id}/sign', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'sign']);
+    Route::post('/player-clearance/{player_id}/unsign', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'unsign']);
+    Route::post('/player-clearance/{player_id}/close', [\App\Http\Controllers\Api\PlayerClearanceController::class, 'close']);
 
     // Travels (travel_itineraries)
     Route::get('/travels/mine', [\App\Http\Controllers\Api\TravelItineraryController::class, 'mine']);

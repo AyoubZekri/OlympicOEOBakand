@@ -26,6 +26,7 @@ class DisciplinaryController extends Controller
                 'memberName' => $case->individualsId ? $case->individualsId->first_name . ' ' . $case->individualsId->last_name : 'غير معروف',
                 'actionType' => $action ? $action->action_type : 'طلب توضيح',
                 'incidentDate' => $case->incident_date ? date('Y-m-d', strtotime($case->incident_date)) : '',
+                'incidentTime' => $case->incident_date && date('H:i', strtotime($case->incident_date)) !== '00:00' ? date('H:i', strtotime($case->incident_date)) : '',
                 'reason' => $case->description ?? '',
                 'status' => $case->case_status ?? 'مفتوح',
                 'is_acknowledged' => $action ? (bool) $action->is_acknowledged : false,
@@ -71,6 +72,7 @@ class DisciplinaryController extends Controller
                 'id' => (string) $case->id,
                 'actionType' => $action ? $action->action_type : 'طلب توضيح',
                 'incidentDate' => $case->incident_date ? date('Y-m-d', strtotime($case->incident_date)) : '',
+                'incidentTime' => $case->incident_date && date('H:i', strtotime($case->incident_date)) !== '00:00' ? date('H:i', strtotime($case->incident_date)) : '',
                 'reason' => $case->description ?? '',
                 'status' => $case->case_status ?? 'مفتوح',
                 'incidentLocation' => $case->incident_location ?? '',
@@ -90,6 +92,52 @@ class DisciplinaryController extends Controller
                 'signed_document' => $action ? $action->signed_document : null,
             ];
         })->values();
+
+        return response()->json(['status' => 'success', 'data' => $data]);
+    }
+
+    /**
+     * The hearings the signed-in user runs (named their officer), not closed yet nor cancelled:
+     * the officer is told they were named, and reminded when the hearing is near.
+     */
+    public function officiating(Request $request)
+    {
+        $user = $request->user();
+        $norm = fn ($name) => mb_strtolower(trim(preg_replace('/\s+/u', ' ', (string) $name)));
+        $names = \App\Models\Individual::where('user_id', $user->id)->get(['first_name', 'last_name'])->toBase()
+            ->map(fn ($i) => $norm($i->first_name . ' ' . $i->last_name))
+            ->push($norm($user->name))
+            ->filter()->unique()->values()->all();
+        if (!$names) {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+
+        $data = DisciplinaryAction::where('action_type', 'استدعاء جلسة')
+            ->whereNotNull('hearing_officer')
+            ->whereNull('hearing_end_time')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn ($action) => in_array($norm($action->hearing_officer), $names, true))
+            // Only the case's current action
+            ->filter(fn ($action) => (int) DisciplinaryAction::where('case_id', $action->case_id)->max('id') === (int) $action->id)
+            ->map(function (DisciplinaryAction $action) {
+                $case = DisciplinaryCase::with('individualsId')->find($action->case_id);
+                if (!$case || $case->case_status === 'ملغى') {
+                    return null;
+                }
+                $at = $action->deadline_or_hearing_date ? strtotime($action->deadline_or_hearing_date) : null;
+                return [
+                    'id' => (string) $case->id,
+                    'memberName' => $case->individualsId ? $case->individualsId->first_name . ' ' . $case->individualsId->last_name : '',
+                    'reason' => $case->description ?? '',
+                    'status' => $case->case_status ?? 'مفتوح',
+                    'deadlineOrHearingDate' => $at ? date('Y-m-d', $at) : '',
+                    'hearingTime' => $at && date('H:i', $at) !== '00:00' ? date('H:i', $at) : '',
+                    'hearingLocation' => $action->hearing_location ?? '',
+                    'hearingOfficer' => $action->hearing_officer,
+                ];
+            })
+            ->filter()->values();
 
         return response()->json(['status' => 'success', 'data' => $data]);
     }
@@ -193,6 +241,7 @@ class DisciplinaryController extends Controller
                     'memberName' => $case->individualsId ? $case->individualsId->first_name . ' ' . $case->individualsId->last_name : '',
                     'actionType' => $action->action_type,
                     'incidentDate' => date('Y-m-d', strtotime($case->incident_date)),
+                    'incidentTime' => date('H:i', strtotime($case->incident_date)) !== '00:00' ? date('H:i', strtotime($case->incident_date)) : '',
                     'reason' => $case->description,
                     'status' => $case->case_status,
                     'incidentLocation' => $case->incident_location,

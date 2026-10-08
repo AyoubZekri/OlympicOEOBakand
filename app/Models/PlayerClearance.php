@@ -12,6 +12,10 @@ class PlayerClearance extends Model
     protected $table = 'player_clearances';
     protected $guarded = ['id'];
 
+    protected $casts = [
+        'player_signature' => 'boolean',
+    ];
+
     public function playerId()
     {
         return $this->belongsTo(Individual::class, 'player_id');
