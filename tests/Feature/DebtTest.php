@@ -98,6 +98,20 @@ class DebtTest extends TestCase
         $this->assertSame(0, Debt::count());
     }
 
+    public function test_deleting_a_loan_whose_operation_is_not_linked_removes_it_too(): void
+    {
+        $id = $this->actingAs($this->admin)->postJson('/api/debts/create', [
+            'kind' => 'loan', 'creditor' => 'أحمد', 'amount' => 40000, 'debt_date' => '2026-10-01', 'fund_id' => $this->cash->id,
+        ])->assertCreated()->json('data.id');
+        // A loan recorded before the link was kept (old data): its deposit is still in the fund
+        Debt::whereKey($id)->update(['fund_transaction_id' => null]);
+        $this->assertSame(140000.0, $this->balance($this->cash));
+
+        $this->postJson('/api/debts/delete', ['id' => $id])->assertOk();
+        $this->assertSame(100000.0, $this->balance($this->cash));
+        $this->assertSame(0, FundTransaction::count());
+    }
+
     public function test_validation(): void
     {
         $this->actingAs($this->admin)->postJson('/api/debts/create', ['kind' => 'loan', 'creditor' => 'x', 'amount' => 10, 'debt_date' => '2026-10-01'])

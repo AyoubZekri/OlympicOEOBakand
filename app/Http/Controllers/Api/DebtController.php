@@ -83,13 +83,13 @@ class DebtController extends Controller
         DB::transaction(function () use ($debt, $data) {
             $oldFund = $debt->fund_id;
             $oldAmount = (float) $debt->amount;
+            $tx = $debt->isLoan() ? $this->loanTransactionOf($debt) : null;
             $debt->update($data);
 
             if ($debt->isLoan()) {
                 // The borrowed money moves with the debt: out of the old fund, into the new one
                 $this->moveFund($oldFund, -$oldAmount);
                 $this->moveFund($debt->fund_id, (float) $debt->amount);
-                $tx = $debt->fundTransaction;
                 if ($tx) {
                     $tx->update([
                         'fund_id' => $debt->fund_id,
@@ -97,6 +97,7 @@ class DebtController extends Controller
                         'transaction_date' => $debt->debt_date,
                         'description' => $this->loanDescription($debt),
                     ]);
+                    $debt->update(['fund_transaction_id' => $tx->id]);
                 } else {
                     $debt->update(['fund_transaction_id' => $this->loanTransaction($debt)->id]);
                 }
@@ -116,7 +117,7 @@ class DebtController extends Controller
             $debt->repayments->each(fn (DebtRepayment $r) => $this->cancelRepayment($r));
             if ($debt->isLoan()) {
                 $this->moveFund($debt->fund_id, -(float) $debt->amount);
-                $tx = $debt->fundTransaction;
+                $tx = $this->loanTransactionOf($debt);
                 $debt->update(['fund_transaction_id' => null]);
                 $tx?->delete();
             }
@@ -281,6 +282,21 @@ class DebtController extends Controller
     private function loanDescription(Debt $debt): string
     {
         return 'استلاف من ' . $debt->creditor . ($debt->title ? ' (' . $debt->title . ')' : '');
+    }
+
+    /**
+     * The fund operation of a loan: the linked one, or (a loan recorded before the link was kept)
+     * the deposit in its fund with its amount and its "استلاف من …" description.
+     */
+    private function loanTransactionOf(Debt $debt): ?FundTransaction
+    {
+        return $debt->fundTransaction ?: FundTransaction::where('fund_id', $debt->fund_id)
+            ->whereIn('type', [self::TX_LOAN, 'استلاف'])
+            ->where('amount', $debt->amount)
+            ->where('description', 'like', 'استلاف من ' . $debt->creditor . '%')
+            ->whereNotIn('id', Debt::whereNotNull('fund_transaction_id')->pluck('fund_transaction_id'))
+            ->orderByDesc('id')
+            ->first();
     }
 
     private function loanTransaction(Debt $debt): FundTransaction
