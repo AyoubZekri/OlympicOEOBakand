@@ -118,6 +118,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/return', [\App\Http\Controllers\Api\PaymentController::class, 'returnPayment']);
     // A transferable payment to a member, paid from another fund
     Route::post('/payments/transfer', [\App\Http\Controllers\Api\PaymentController::class, 'transfer']);
+    // Every transferable payment of one fund, paid from another one
+    Route::post('/payments/transfer-all', [\App\Http\Controllers\Api\PaymentController::class, 'transferAll']);
 
     // Purchases on credit (in the payments & expenses table) and their payments
     Route::get('/payments/credit', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'index']);

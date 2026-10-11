@@ -399,6 +399,67 @@ class PaymentController extends Controller
         return response()->json(['status' => 'success', 'id' => (string) $payment->id, 'fund_id' => (string) $payment->fresh()->fund_id]);
     }
 
+    /**
+     * Every transferable payment to a member paid from one fund is paid from another one:
+     * their amounts go back into the first fund and leave the second (one record in each fund).
+     */
+    public function transferAll(Request $request)
+    {
+        $data = $request->validate([
+            'from_fund_id' => 'required|exists:funds,id',
+            'to_fund_id' => 'required|exists:funds,id|different:from_fund_id',
+        ], [
+            'from_fund_id.required' => 'اختر الصندوق المحول منه',
+            'to_fund_id.required' => 'اختر الصندوق المحول إليه',
+            'to_fund_id.different' => 'اختر صندوقين مختلفين',
+        ]);
+
+        $payments = PaymentExpense::where('fund_id', $data['from_fund_id'])
+            ->where('is_transferable', true)
+            ->where(fn ($q) => $q->whereNull('is_credit')->orWhere('is_credit', false))
+            ->get();
+        if ($payments->isEmpty()) {
+            return response()->json(['message' => 'لا توجد دفعات قابلة للتحويل في هذا الصندوق'], 422);
+        }
+
+        DB::transaction(function () use ($payments, $data) {
+            $from = Fund::lockForUpdate()->find($data['from_fund_id']);
+            $to = Fund::lockForUpdate()->find($data['to_fund_id']);
+            // An advance paid back (إرجاع سلفة) put money in; any other payment took it out
+            $net = $payments->sum(fn ($p) => ($p->amount_Nature === 'إرجاع سلفة' ? -1 : 1) * (float) $p->amount);
+            $count = $payments->count();
+
+            $from->current_balance += $net;
+            $from->save();
+            $to->current_balance -= $net;
+            $to->save();
+
+            if (abs($net) > 0.005) {
+                $amount = abs($net);
+                FundTransaction::create([
+                    'fund_id' => $from->id,
+                    'type' => $net > 0 ? 'إرجاع' : 'سحب',
+                    'amount' => $amount,
+                    'transaction_date' => now(),
+                    'description' => "تحويل جماعي لـ {$count} دفعات إلى {$to->name}",
+                    'created_by' => auth()->id(),
+                ]);
+                FundTransaction::create([
+                    'fund_id' => $to->id,
+                    'type' => $net > 0 ? 'سحب' : 'إيداع',
+                    'amount' => $amount,
+                    'transaction_date' => now(),
+                    'description' => "تحويل جماعي لـ {$count} دفعات (محوّلة من {$from->name})",
+                    'created_by' => auth()->id(),
+                ]);
+            }
+
+            PaymentExpense::whereIn('id', $payments->pluck('id'))->update(['fund_id' => $to->id]);
+        });
+
+        return response()->json(['status' => 'success', 'count' => $payments->count()]);
+    }
+
     public function returnPayment(Request $request)
     {
         $validator = Validator::make($request->all(), [
