@@ -42,6 +42,7 @@ class PaymentController extends Controller
                 'isCredit' => (bool) $payment->is_credit,
                 'creditTotal' => $payment->is_credit ? (float) $payment->amount : null,
                 'creditor' => $payment->creditor,
+                'isTransferable' => (bool) $payment->is_transferable,
                 // other conditionals can be stored in notes or other fields if there is no dedicated column
             ];
         });
@@ -86,6 +87,7 @@ class PaymentController extends Controller
             'fund_id' => $request->fund_id,
             'contract_id' => $request->contract_id,
             'Number_of_months' => $request->numberOfMonths ?? 1,
+            'is_transferable' => $request->boolean('is_transferable'),
         ]);
 
         if ($payment->fund_id) {
@@ -125,6 +127,7 @@ class PaymentController extends Controller
             'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
             'fund_id' => (string) $payment->fund_id,
+            'isTransferable' => (bool) $payment->is_transferable,
         ], 201);
     }
 
@@ -193,6 +196,9 @@ class PaymentController extends Controller
         }
         if ($request->has('notes')) {
             $payment->notes = $request->notes;
+        }
+        if ($request->has('is_transferable')) {
+            $payment->is_transferable = $request->boolean('is_transferable');
         }
         if ($request->has('fund_id')) {
             $payment->fund_id = $request->fund_id;
@@ -309,6 +315,7 @@ class PaymentController extends Controller
             'receipt_file' => $payment->receipt_file,
             'notes' => $payment->notes,
             'fund_id' => (string) $payment->fund_id,
+            'isTransferable' => (bool) $payment->is_transferable,
         ]);
     }
 

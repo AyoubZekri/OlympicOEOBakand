@@ -14,6 +14,8 @@ class PaymentExpense extends Model
         'payment_method',
         'amount_Nature',
         'transaction_type',
+        // A payment to a member: can its amount be transferred? (no by default)
+        'is_transferable',
         'Number_of_months',
         'start_date',
         'end_date',
@@ -35,6 +37,7 @@ class PaymentExpense extends Model
 
     protected $casts = [
         'is_credit' => 'boolean',
+        'is_transferable' => 'boolean',
     ];
 
     public function individual()
