@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PaymentExpense;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
@@ -331,6 +332,71 @@ class PaymentController extends Controller
 
         PaymentExpense::destroy($request->id);
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * A transferable payment to a member is paid from another fund: its amount goes back into the fund it was
+     * paid from and leaves the chosen one; both funds' records show it.
+     */
+    public function transfer(Request $request)
+    {
+        $data = $request->validate([
+            'id' => 'required|exists:payment_expenses,id',
+            'fund_id' => 'required|exists:funds,id',
+        ], [
+            'fund_id.required' => 'اختر الصندوق المحول إليه',
+        ]);
+
+        $payment = PaymentExpense::findOrFail($data['id']);
+        if (!$payment->is_transferable) {
+            return response()->json(['message' => 'هذا المبلغ غير قابل للتحويل'], 422);
+        }
+        if (!$payment->fund_id || $payment->is_credit) {
+            return response()->json(['message' => 'هذه العملية غير مرتبطة بصندوق'], 422);
+        }
+        if ((int) $payment->fund_id === (int) $data['fund_id']) {
+            return response()->json(['message' => 'اختر صندوقاً غير صندوقها الحالي'], 422);
+        }
+
+        DB::transaction(function () use ($payment, $data) {
+            $from = Fund::lockForUpdate()->find($payment->fund_id);
+            $to = Fund::lockForUpdate()->find($data['fund_id']);
+            $amount = (float) $payment->amount;
+            // An advance paid back (إرجاع سلفة) put money in; any other payment took it out
+            $sign = $payment->amount_Nature === 'إرجاع سلفة' ? -1 : 1;
+            $individual = \App\Models\Individual::find($payment->individuals_id);
+            $who = $individual ? trim($individual->first_name . ' ' . $individual->last_name) : 'مصروف عام';
+            $date = $payment->Payments_data ?: now();
+
+            if ($from) {
+                $from->current_balance += $sign * $amount;
+                $from->save();
+                FundTransaction::create([
+                    'fund_id' => $from->id,
+                    'type' => $sign > 0 ? 'إرجاع' : 'سحب',
+                    'amount' => $amount,
+                    'transaction_date' => $date,
+                    'description' => 'تحويل دفعة (' . $payment->amount_Nature . ') - ' . $who . ' إلى ' . ($to?->name ?? 'صندوق آخر'),
+                    'created_by' => auth()->id(),
+                ]);
+            }
+
+            $to->current_balance -= $sign * $amount;
+            $to->save();
+            FundTransaction::create([
+                'fund_id' => $to->id,
+                'type' => $sign > 0 ? 'سحب' : 'إيداع',
+                'amount' => $amount,
+                'transaction_date' => $date,
+                'description' => 'دفع/مصروف (' . $payment->amount_Nature . ') - ' . $who . ' (محوّل من ' . ($from?->name ?? 'صندوق آخر') . ')',
+                'created_by' => auth()->id(),
+            ]);
+
+            $payment->fund_id = $to->id;
+            $payment->save();
+        });
+
+        return response()->json(['status' => 'success', 'id' => (string) $payment->id, 'fund_id' => (string) $payment->fresh()->fund_id]);
     }
 
     public function returnPayment(Request $request)

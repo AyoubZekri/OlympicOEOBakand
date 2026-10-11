@@ -116,6 +116,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/update', [\App\Http\Controllers\Api\PaymentController::class, 'update']);
     Route::post('/payments/delete', [\App\Http\Controllers\Api\PaymentController::class, 'destroy']);
     Route::post('/payments/return', [\App\Http\Controllers\Api\PaymentController::class, 'returnPayment']);
+    // A transferable payment to a member, paid from another fund
+    Route::post('/payments/transfer', [\App\Http\Controllers\Api\PaymentController::class, 'transfer']);
 
     // Purchases on credit (in the payments & expenses table) and their payments
     Route::get('/payments/credit', [\App\Http\Controllers\Api\CreditPurchaseController::class, 'index']);
