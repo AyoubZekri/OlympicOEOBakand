@@ -43,7 +43,7 @@ class DebtTest extends TestCase
         ])->assertCreated()->json('data');
 
         $this->assertSame(300000.0, $this->balance($this->cash));
-        $this->assertDatabaseHas('fund_transactions', ['fund_id' => $this->cash->id, 'type' => 'استلاف', 'amount' => 200000]);
+        $this->assertDatabaseHas('fund_transactions', ['fund_id' => $this->cash->id, 'type' => 'إيداع', 'amount' => 200000, 'description' => 'استلاف من أحمد']);
         $this->assertSame('open', $debt['status']);
 
         // Half of it, from another fund
@@ -85,7 +85,7 @@ class DebtTest extends TestCase
         ])->assertOk();
         $this->assertSame(100000.0, $this->balance($this->cash));
         $this->assertSame(580000.0, $this->balance($this->bank));
-        $this->assertSame(1, FundTransaction::where('type', 'استلاف')->count());
+        $this->assertSame(1, FundTransaction::where('description', 'like', 'استلاف من%')->count());
 
         $this->postJson('/api/debts/repay', ['debt_id' => $id, 'amount' => 30000, 'paid_on' => '2026-10-02', 'fund_id' => $this->bank->id]);
         // Cannot go below what was already paid

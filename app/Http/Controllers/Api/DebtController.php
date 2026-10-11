@@ -25,7 +25,8 @@ use Illuminate\Validation\ValidationException;
 class DebtController extends Controller
 {
     /** Fund transaction types written by the debts */
-    public const TX_LOAN = 'استلاف';
+    // The borrowed money goes into its fund as a deposit; its description says it is a loan ("استلاف من …")
+    public const TX_LOAN = 'إيداع';
     public const TX_REPAY = 'تسديد دين';
 
     private const MESSAGES = [
