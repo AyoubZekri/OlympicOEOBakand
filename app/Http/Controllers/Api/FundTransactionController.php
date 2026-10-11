@@ -94,31 +94,9 @@ class FundTransactionController extends Controller
             return response()->json(['error' => $validator->errors()], 400);
         }
 
-        $transaction = FundTransaction::find($request->id);
-        
-        // Revert Balances
-        if ($transaction) {
-            $fund = Fund::find($transaction->fund_id);
-            if ($fund) {
-                // استلاف (a loan received) / تسديد دين (a loan paid back) are written by the debts
-                if ($transaction->type === 'إيداع' || $transaction->type === 'استلاف') {
-                    $fund->current_balance -= $transaction->amount;
-                } elseif ($transaction->type === 'سحب' || $transaction->type === 'تحويل' || $transaction->type === 'تسديد دين') {
-                    $fund->current_balance += $transaction->amount;
-                }
-                $fund->save();
-            }
+        // The operation leaves the record only: the funds keep their balances
+        FundTransaction::find($request->id)?->delete();
 
-            if ($transaction->type === 'تحويل' && $transaction->to_fund_id) {
-                $toFund = Fund::find($transaction->to_fund_id);
-                if ($toFund) {
-                    $toFund->current_balance -= $transaction->amount;
-                    $toFund->save();
-                }
-            }
-            $transaction->delete();
-        }
-        
         return response()->json(['success' => true]);
     }
 }
