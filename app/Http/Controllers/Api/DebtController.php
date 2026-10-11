@@ -108,19 +108,18 @@ class DebtController extends Controller
     }
 
     /** Deleting a debt cancels everything it did: its repayments, and the borrowed money in the fund */
+    /**
+     * The debt leaves the debts record only: the funds keep their balances and their operations
+     * (the money received and the repayments already made stay recorded there).
+     */
     public function destroy(Request $request)
     {
         $request->validate(['id' => 'required|exists:debts,id']);
         $debt = Debt::findOrFail($request->input('id'));
 
         DB::transaction(function () use ($debt) {
-            $debt->repayments->each(fn (DebtRepayment $r) => $this->cancelRepayment($r));
-            if ($debt->isLoan()) {
-                $this->moveFund($debt->fund_id, -(float) $debt->amount);
-                $tx = $this->loanTransactionOf($debt);
-                $debt->update(['fund_transaction_id' => null]);
-                $tx?->delete();
-            }
+            // The repayments' rows go with the debt; their expenses and fund withdrawals stay
+            DebtRepayment::where('debt_id', $debt->id)->delete();
             $debt->delete();
         });
 
