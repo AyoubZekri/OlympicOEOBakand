@@ -24,6 +24,7 @@ class AlertsController extends Controller
         '/travels/mine', '/travels', '/travels/mine/notices',
         '/medical-records/mine', '/medical-records', '/medical-records/mine/notices',
         '/debts', '/payments/credit',
+        '/feedback/mine', '/feedback',
     ];
 
     public function version()

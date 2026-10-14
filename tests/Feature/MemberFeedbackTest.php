@@ -88,4 +88,18 @@ class MemberFeedbackTest extends TestCase
         $this->as($member)->postJson('/api/feedback/mine/delete', ['id' => $id])->assertOk();
         $this->assertSame(0, MemberFeedback::count());
     }
+
+    public function test_the_alerts_get_the_opinions_in_their_batch(): void
+    {
+        $member = User::factory()->create();
+        $this->as($member)->postJson('/api/feedback/mine/create', ['type' => 'complaint', 'subject' => 'الماء الساخن']);
+        $manager = $this->manager(['view' => true]);
+
+        $p = json_encode(['a' => '/feedback/mine', 'b' => '/feedback']);
+        $this->as($member)->getJson('/api/alerts/all?p=' . urlencode($p))
+            ->assertJsonPath('a.status', 200)->assertJsonPath('a.data.data.0.subject', 'الماء الساخن')
+            ->assertJsonPath('b.status', 403);
+        $this->as($manager)->getJson('/api/alerts/all?p=' . urlencode($p))
+            ->assertJsonPath('b.status', 200)->assertJsonPath('b.data.data.0.read', false);
+    }
 }

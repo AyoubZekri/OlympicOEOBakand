@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Individual;
 use App\Models\MemberFeedback;
+use App\Services\AlertsVersion;
 use App\Services\RolePermissions;
 use Illuminate\Http\Request;
 
@@ -68,6 +69,8 @@ class MemberFeedbackController extends Controller
             ->whereNotNull('replied_at')
             ->whereNull('reply_seen_at')
             ->update(['reply_seen_at' => now()]);
+        // A mass update fires no model event: the alerts are told here
+        AlertsVersion::bump();
 
         return response()->json(['message' => 'ok']);
     }
@@ -90,6 +93,7 @@ class MemberFeedbackController extends Controller
         $this->allow($request, 'view');
         $data = $request->validate(['id' => 'required|integer|exists:member_feedback,id']);
         MemberFeedback::whereKey($data['id'])->whereNull('read_at')->update(['read_at' => now()]);
+        AlertsVersion::bump();
 
         return response()->json(['message' => 'ok']);
     }
