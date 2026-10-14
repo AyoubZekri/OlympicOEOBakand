@@ -335,6 +335,24 @@ class PaymentController extends Controller
     }
 
     /**
+     * Whether a payment or an expense can be transferred to another fund, changed on its own
+     * (nothing else of the operation, nor any fund, is touched)
+     */
+    public function setTransferable(Request $request)
+    {
+        $data = $request->validate([
+            'id' => 'required|exists:payment_expenses,id',
+            'is_transferable' => 'required|boolean',
+        ]);
+
+        $payment = PaymentExpense::findOrFail($data['id']);
+        $payment->is_transferable = (bool) $data['is_transferable'];
+        $payment->save();
+
+        return response()->json(['id' => $payment->id, 'isTransferable' => (bool) $payment->is_transferable]);
+    }
+
+    /**
      * A transferable payment to a member is paid from another fund: its amount goes back into the fund it was
      * paid from and leaves the chosen one; both funds' records show it.
      */

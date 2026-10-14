@@ -32,6 +32,26 @@ class PaymentTransferableTest extends TestCase
         $this->assertTrue($listed['isTransferable']);
     }
 
+    public function test_an_expense_says_it_too_and_it_can_be_changed_on_its_own(): void
+    {
+        $user = User::factory()->create();
+        $cash = Fund::create(['name' => 'الصندوق', 'type' => 'wallet', 'current_balance' => 100000, 'status' => 'active']);
+        $expense = ['transactionType' => 'مصروف', 'amount' => 20000, 'paymentMethod' => 'نقدا', 'paymentDate' => '2026-10-13', 'amountNature' => 'تجهيزات', 'fund_id' => $cash->id];
+
+        $id = $this->actingAs($user)->postJson('/api/payments/create', $expense + ['is_transferable' => true])->assertCreated()->assertJsonPath('isTransferable', true)->json('id');
+        $this->assertSame(80000.0, (float) $cash->fresh()->current_balance);
+        $records = FundTransaction::count();
+
+        // Changed on its own: nothing else moves
+        $this->postJson('/api/payments/transferable', ['id' => $id, 'is_transferable' => false])->assertOk()->assertJsonPath('isTransferable', false);
+        $this->assertFalse(PaymentExpense::find($id)->is_transferable);
+        $this->postJson('/api/payments/transferable', ['id' => $id, 'is_transferable' => true])->assertOk()->assertJsonPath('isTransferable', true);
+        $this->assertSame(80000.0, (float) $cash->fresh()->current_balance);
+        $this->assertSame($records, FundTransaction::count());
+
+        $this->postJson('/api/payments/transferable', ['id' => $id])->assertStatus(422);
+    }
+
     public function test_a_transferable_payment_is_paid_from_another_fund(): void
     {
         $user = User::factory()->create();

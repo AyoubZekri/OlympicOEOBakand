@@ -48,6 +48,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/training-sessions/{sessionId}/attendance', [App\Http\Controllers\Api\TrainingAttendanceController::class, 'getSessionAttendance']);
     Route::post('/training-attendance/save', [App\Http\Controllers\Api\TrainingAttendanceController::class, 'saveAttendance']);
 
+    // Members' opinions: sent from the personal space, replied to (and a suggestion rated) by the management
+    Route::get('/feedback/mine', [App\Http\Controllers\Api\MemberFeedbackController::class, 'mine']);
+    Route::post('/feedback/mine/create', [App\Http\Controllers\Api\MemberFeedbackController::class, 'storeMine']);
+    Route::post('/feedback/mine/delete', [App\Http\Controllers\Api\MemberFeedbackController::class, 'destroyMine']);
+    Route::post('/feedback/mine/seen', [App\Http\Controllers\Api\MemberFeedbackController::class, 'seenMine']);
+    Route::get('/feedback', [App\Http\Controllers\Api\MemberFeedbackController::class, 'index']);
+    Route::post('/feedback/read', [App\Http\Controllers\Api\MemberFeedbackController::class, 'markRead']);
+    Route::post('/feedback/reply', [App\Http\Controllers\Api\MemberFeedbackController::class, 'reply']);
+    Route::post('/feedback/delete', [App\Http\Controllers\Api\MemberFeedbackController::class, 'destroy']);
+
     // Absences Routes (using app_absences table)
     Route::get('/absences/mine', [App\Http\Controllers\Api\AbsenceController::class, 'mine']);
     Route::post('/absences/mine/justify', [App\Http\Controllers\Api\AbsenceController::class, 'justifyMine']);
@@ -116,6 +126,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/update', [\App\Http\Controllers\Api\PaymentController::class, 'update']);
     Route::post('/payments/delete', [\App\Http\Controllers\Api\PaymentController::class, 'destroy']);
     Route::post('/payments/return', [\App\Http\Controllers\Api\PaymentController::class, 'returnPayment']);
+    // Whether a payment or an expense can be transferred, changed on its own
+    Route::post('/payments/transferable', [\App\Http\Controllers\Api\PaymentController::class, 'setTransferable']);
     // A transferable payment to a member, paid from another fund
     Route::post('/payments/transfer', [\App\Http\Controllers\Api\PaymentController::class, 'transfer']);
     // Every transferable payment of one fund, paid from another one
