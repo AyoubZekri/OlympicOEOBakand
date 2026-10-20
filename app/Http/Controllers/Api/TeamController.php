@@ -18,7 +18,10 @@ class TeamController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            // A players' category or a staff one (players when not said)
+            'kind' => 'nullable|in:players,staff',
         ]);
+        $validated['kind'] = $validated['kind'] ?? 'players';
 
         $team = Team::create($validated);
 
@@ -40,6 +43,7 @@ class TeamController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
+            'kind' => 'sometimes|in:players,staff',
         ]);
 
         $team->update($validated);
