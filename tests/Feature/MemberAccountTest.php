@@ -92,15 +92,6 @@ class MemberAccountTest extends TestCase
 
     public function test_the_account_is_kept_when_deleting_it_would_lose_history(): void
     {
-        // Tasks are assigned to it: they would be deleted with it
-        $id = $this->createMember()->json('individual.id');
-        $userId = Individual::find($id)->user_id;
-        \App\Services\Tasks\TaskWorkflow::create(['title' => 'x', 'assignee_id' => $userId, 'created_by' => $this->admin->id], $this->admin->id);
-        $this->actingAs($this->admin)->postJson('/api/individuals/delete', ['id' => $id])->assertOk()
-            ->assertJsonPath('account_kept', 'لم يُحذف حساب المستخدم لأن له مهاماً مسندة، حتى لا تُحذف معه');
-        $this->assertNull(Individual::find($id));
-        $this->assertNotNull(User::find($userId));
-
         // Another record points to it (the database refuses the delete)
         $id = $this->createMember()->json('individual.id');
         $userId = Individual::find($id)->user_id;

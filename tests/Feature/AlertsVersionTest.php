@@ -162,12 +162,13 @@ class AlertsVersionTest extends TestCase
         $me = \App\Models\Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
         \App\Models\AppAbsence::create(['player_id' => $me->id, 'absence_type' => 'غائب غير مبرر', 'event_category' => 'تدريب', 'event_date' => now()->toDateString(), 'justification_status' => 'none']);
 
-        $paths = json_encode(['abs' => '/absences/mine', 'tasks' => '/tasks?scope=my', 'nope' => '/users']);
+        $paths = json_encode(['abs' => '/absences/mine', 'tasks' => '/tasks/mine', 'nope' => '/users']);
         $out = $this->actingAs($user)->getJson('/api/alerts/all?p=' . urlencode($paths))->assertOk()->json();
 
         // the same answer as the list's own route
         $this->assertSame(200, $out['abs']['status']);
         $this->assertSame($this->actingAs($user)->getJson('/api/absences/mine')->json(), $out['abs']['data']);
+        // the member's tasks
         $this->assertSame(200, $out['tasks']['status']);
         // only the alerts' lists
         $this->assertSame(404, $out['nope']['status']);

@@ -4,432 +4,350 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Task;
-use App\Models\TaskAttachment;
-use App\Models\User;
-use App\Services\Tasks\TaskEvents;
-use App\Services\Tasks\TaskPermissions;
-use App\Services\Tasks\TaskWorkflow;
-use App\Services\Tasks\TaskWorkflowException;
-use Illuminate\Database\Eloquent\Builder;
+use App\Models\TaskMessage;
+use App\Services\RolePermissions;
+use App\Services\TaskSchedule;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Carbon;
 
+/**
+ * The tasks.
+ * Personal space: the member sees the tasks given to them and talks about each one (the conversation); they do not
+ * change its status.
+ * Management (tasks.view / add / edit / delete): gives tasks (normal, urgent) and appointments (linked to an event,
+ * or periodic), follows them, changes their status, and talks with the member.
+ */
 class TaskController extends Controller
 {
-    /**
-     * Tasks list. scope:
-     *   auto (default): what the signed-in user deals with. Managers (tasks.manage) get every task; others get the tasks
-     *     assigned to them, created by them, and (with tasks.review) the tasks waiting for review or reviewed by them
-     *   my | review | created | all | archive
-     * Reviewers are not chosen in advance: every user with tasks.review sees the tasks waiting for review.
-     */
+    // ── Personal space ──
+
+    public function mine(Request $request)
+    {
+        TaskSchedule::generateDue();
+        $tasks = $this->tasks()
+            ->where('assignee_id', $request->user()->id)
+            ->withCount(['messages as unread' => fn ($q) => $q
+                ->where(fn ($q) => $q->whereNull('task_messages.user_id')->orWhereColumn('task_messages.user_id', '!=', 'tasks.assignee_id'))
+                ->where(fn ($q) => $q->whereNull('tasks.assignee_read_at')->orWhereColumn('task_messages.created_at', '>', 'tasks.assignee_read_at'))])
+            ->get();
+
+        return response()->json(['data' => $tasks->map(fn ($t) => $this->present($t))]);
+    }
+
+    // ── Management ──
+
     public function index(Request $request)
     {
-        $user = $request->user();
-        $scope = $request->query('scope', 'auto');
-        $canReview = TaskPermissions::can($user, 'review');
-        if ($scope === 'auto' && TaskPermissions::can($user, 'manage')) {
-            $scope = 'all';
-        }
+        $this->allow($request, 'view');
+        TaskSchedule::generateDue();
+        $tasks = $this->tasks()
+            ->withCount(['messages as unread' => fn ($q) => $q
+                ->whereColumn('task_messages.user_id', 'tasks.assignee_id')
+                ->where(fn ($q) => $q->whereNull('tasks.managers_read_at')->orWhereColumn('task_messages.created_at', '>', 'tasks.managers_read_at'))])
+            ->get();
 
-        if (in_array($scope, ['all', 'archive'], true) && !TaskPermissions::can($user, 'manage')) {
-            return response()->json(['message' => 'لا تملك صلاحية عرض كل المهام'], 403);
-        }
-        if ($scope === 'review' && !$canReview) {
-            return response()->json(['message' => 'لا تملك صلاحية مراجعة المهام'], 403);
-        }
-
-        $query = Task::query()->with(['assignee:id,name', 'reviewer:id,name', 'creator:id,name'])->withCount('attachments');
-        match ($scope) {
-            // Waiting for a review (their own tasks too), or reviewed by them
-            'review' => $query->where(fn (Builder $q) => $q->where('status', 'in_review')->orWhere('reviewer_id', $user->id)),
-            'created' => $query->where('created_by', $user->id),
-            'auto' => $query->where(function (Builder $q) use ($user, $canReview) {
-                $q->where('assignee_id', $user->id)
-                    ->orWhere('created_by', $user->id)
-                    ->orWhere('reviewer_id', $user->id);
-                if ($canReview) {
-                    $q->orWhere('status', 'in_review');
-                }
-            }),
-            'all' => null,
-            'archive' => $query->onlyTrashed(),
-            default => $query->where('assignee_id', $user->id),
-        };
-
-        if ($status = $request->query('status')) {
-            $query->whereIn('status', explode(',', $status));
-        }
-        if ($assignee = $request->query('assignee_id')) {
-            $query->where('assignee_id', $assignee);
-        }
-        if ($search = trim((string) $request->query('search'))) {
-            $query->where(fn (Builder $q) => $q->where('title', 'like', "%{$search}%")->orWhere('reference', 'like', "%{$search}%"));
-        }
-
-        $tasks = $query->orderByRaw("CASE WHEN status = 'approved' THEN 1 ELSE 0 END")
-            ->orderByRaw('due_at IS NULL')->orderBy('due_at')->orderByDesc('id')
-            ->limit(500)->get();
-
-        return response()->json(['status' => 'success', 'data' => $tasks->map(fn (Task $t) => $this->present($t))]);
+        return response()->json(['data' => $tasks->map(fn ($t) => $this->present($t))]);
     }
 
-    public function show(Request $request, $id)
+    /** The appointments (linked to an event, or periodic) */
+    public function templates(Request $request)
     {
-        $task = Task::withTrashed()->with([
-            'assignee:id,name', 'reviewer:id,name', 'creator:id,name',
-            'attachments.uploader:id,name', 'history.user:id,name',
-        ])->findOrFail($id);
+        $this->allow($request, 'view');
+        $templates = Task::with(['assignee:id,name', 'creator:id,name'])
+            ->withCount(['children as tasks_count'])
+            ->where('is_template', true)
+            ->latest('id')
+            ->get();
 
-        if (!$this->canSee($request->user(), $task)) {
-            return response()->json(['message' => 'لا تملك صلاحية عرض هذه المهمة'], 403);
-        }
-
-        return response()->json(['status' => 'success', 'data' => $this->present($task, true)]);
+        return response()->json(['data' => $templates->map(fn ($t) => $this->presentTemplate($t))]);
     }
 
+    /** A normal or urgent task (given at once), or an appointment (scheduled) */
     public function store(Request $request)
     {
-        $user = $request->user();
-        if (!TaskPermissions::can($user, 'add')) {
-            return response()->json(['message' => 'لا تملك صلاحية إنشاء المهام'], 403);
-        }
+        $this->allow($request, 'add');
+        $data = $this->validated($request, $request->input('kind'));
 
-        $data = $this->validated($request);
-
-        // Linked to a specific match or training session
-        $source = ['source_type' => 'manual', 'source_ref' => null];
-        $event = $request->validate([
-            'event_type' => 'nullable|in:' . implode(',', TaskEvents::TYPES),
-            'event_id' => 'required_with:event_type|nullable|integer',
-        ], ['event_id.required_with' => 'اختر المباراة أو الحصة التدريبية']);
-        if (!empty($event['event_type'])) {
-            if (!TaskEvents::exists($event['event_type'], (int) $event['event_id'])) {
-                return response()->json(['message' => 'المباراة أو الحصة التدريبية غير موجودة'], 422);
+        if ($data['kind'] === 'scheduled') {
+            $task = Task::create($this->templateFields($data) + [
+                'title' => $data['title'], 'details' => $data['details'] ?? null, 'kind' => 'scheduled', 'nature' => $data['nature'],
+                'assignee_id' => $data['assignee_id'], 'created_by' => $request->user()->id, 'is_template' => true, 'status' => 'active',
+            ]);
+            // A periodic one whose day is today: today's task at once
+            if ($task->schedule === 'periodic') {
+                TaskSchedule::generateDue(true);
             }
-            $source = ['source_type' => 'event', 'source_ref' => "{$event['event_type']}:{$event['event_id']}"];
+
+            return response()->json(['data' => $this->presentTemplate($task->fresh(['assignee', 'creator'])->loadCount(['children as tasks_count']))], 201);
         }
 
-        $task = TaskWorkflow::create($data + $source + ['created_by' => $user->id], $user->id);
+        $task = Task::create([
+            'title' => $data['title'], 'details' => $data['details'] ?? null, 'kind' => $data['kind'], 'nature' => $data['nature'],
+            'assignee_id' => $data['assignee_id'], 'created_by' => $request->user()->id,
+            'due_at' => $data['due_at'] ?? null, 'status' => 'new',
+        ]);
 
-        return response()->json(['status' => 'success', 'data' => $this->present($task->fresh(['assignee:id,name', 'reviewer:id,name', 'creator:id,name']))], 201);
+        return response()->json(['data' => $this->present($this->tasks()->find($task->id))], 201);
     }
 
+    /** Edited: its text, its member, its nature, its deadline (a task) or its schedule (an appointment); the kind stays */
     public function update(Request $request)
     {
-        $user = $request->user();
-        $task = Task::findOrFail($request->input('id'));
+        $this->allow($request, 'edit');
+        $task = Task::findOrFail($request->validate(['id' => 'required|integer'])['id']);
+        $data = $this->validated($request, $task->kind);
 
-        if ((int) $task->created_by !== (int) $user->id && !TaskPermissions::can($user, 'edit')) {
-            return response()->json(['message' => 'لا تملك صلاحية تعديل هذه المهمة'], 403);
+        $fields = ['title' => $data['title'], 'details' => $data['details'] ?? null, 'nature' => $data['nature'], 'assignee_id' => $data['assignee_id']];
+        if ((int) $task->assignee_id !== (int) $data['assignee_id']) {
+            // Another member: it is new to them
+            $fields += ['assignee_seen_at' => null, 'assignee_read_at' => null];
         }
-        if ($task->status === 'approved') {
-            return response()->json(['message' => 'لا يمكن تعديل مهمة معتمدة'], 422);
+        if ($task->is_template) {
+            $task->update($fields + $this->templateFields($data));
+
+            return response()->json(['data' => $this->presentTemplate($task->fresh(['assignee', 'creator'])->loadCount(['children as tasks_count']))]);
         }
 
-        $data = $this->validated($request);
-        $reassigned = (int) $data['assignee_id'] !== (int) $task->assignee_id;
-        $task->fill($data)->save();
-        TaskWorkflow::record($task, 'updated', $task->status, $task->status, $user->id, $reassigned ? 'تغيير المكلف' : null);
+        $task->update($fields + ($task->kind === 'scheduled' ? [] : ['due_at' => $data['due_at'] ?? null]));
 
-        return response()->json(['status' => 'success', 'data' => $this->present($task->fresh(['assignee:id,name', 'reviewer:id,name', 'creator:id,name']))]);
+        return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
     }
 
-    /** Soft delete: the task stays in the archive */
+    /** The management changes a task's status; the change (and its reason) is written in the conversation */
+    public function status(Request $request)
+    {
+        $this->allow($request, 'edit');
+        $data = $request->validate([
+            'id' => 'required|integer',
+            'status' => 'required|in:' . implode(',', Task::STATUSES),
+            'note' => 'nullable|string|max:2000|required_if:status,on_hold|required_if:status,cancelled',
+        ], [
+            'status.in' => 'حالة غير صالحة',
+            'note.required_if' => 'اكتب السبب',
+        ]);
+        $task = Task::where('is_template', false)->findOrFail($data['id']);
+        if ($task->status === $data['status']) {
+            return response()->json(['message' => 'المهمة في هذه الحالة أصلاً'], 422);
+        }
+
+        $task->update(['status' => $data['status'], 'done_at' => $data['status'] === 'done' ? now() : null, 'managers_read_at' => now()]);
+        TaskMessage::create(['task_id' => $task->id, 'user_id' => $request->user()->id, 'status' => $data['status'], 'body' => $data['note'] ?? null]);
+
+        return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
+    }
+
+    /** An appointment stopped (creates no more tasks) or started again */
+    public function toggle(Request $request)
+    {
+        $this->allow($request, 'edit');
+        $template = Task::where('is_template', true)->findOrFail($request->validate(['id' => 'required|integer'])['id']);
+        $resume = $template->status === 'paused';
+        $template->update(['status' => $resume ? 'active' : 'paused']
+            // Started again: from today, not the days it was stopped
+            + ($resume ? ['last_run_on' => TaskSchedule::localNow()->subDay()->toDateString()] : []));
+        if ($resume && $template->schedule === 'periodic') {
+            TaskSchedule::generateDue(true);
+        }
+
+        return response()->json(['data' => $this->presentTemplate($template->fresh(['assignee', 'creator'])->loadCount(['children as tasks_count']))]);
+    }
+
+    /** A task, or an appointment (the tasks it created stay) */
     public function destroy(Request $request)
     {
-        $user = $request->user();
-        $task = Task::findOrFail($request->input('id'));
+        $this->allow($request, 'delete');
+        Task::findOrFail($request->validate(['id' => 'required|integer'])['id'])->delete();
 
-        if ((int) $task->created_by !== (int) $user->id && !TaskPermissions::can($user, 'delete')) {
-            return response()->json(['message' => 'لا تملك صلاحية حذف هذه المهمة'], 403);
-        }
-
-        // Deleted for good (no archive). A task made by a periodic / automatic task is only hidden for ever:
-        // its trace keeps that task from being made a second time.
-        if ($task->template_id) {
-            TaskWorkflow::record($task, 'deleted', $task->status, $task->status, $user->id);
-            $task->delete();
-        } else {
-            foreach ($task->attachments as $attachment) {
-                if ($attachment->path) {
-                    Storage::disk('public')->delete($attachment->path);
-                }
-            }
-            $task->forceDelete(); // its history and attachments go with it
-        }
-
-        return response()->json(['status' => 'success']);
+        return response()->json(['message' => 'تم الحذف']);
     }
 
-    public function restore(Request $request)
+    // ── The conversation (the member and the management) ──
+
+    /** A task's conversation; opening it marks it read for whoever opens it */
+    public function messages(Request $request)
     {
-        $user = $request->user();
-        if (!TaskPermissions::can($user, 'delete') && !TaskPermissions::can($user, 'manage')) {
-            return response()->json(['message' => 'لا تملك صلاحية استرجاع المهام'], 403);
-        }
+        $task = $this->reachable($request);
+        $this->markRead($request, $task);
+        $messages = $task->messages()->with('user:id,name')->oldest('id')->get();
 
-        $task = Task::onlyTrashed()->findOrFail($request->input('id'));
-        $task->restore();
-        TaskWorkflow::record($task, 'restored', $task->status, $task->status, $user->id);
-
-        return response()->json(['status' => 'success', 'data' => $this->present($task)]);
-    }
-
-    /** Workflow action: start | block | resume | submit | approve | return */
-    public function action(Request $request)
-    {
-        $request->validate([
-            'id' => 'required|exists:tasks,id',
-            'action' => 'required|string',
-            'reason' => 'nullable|string',
-            'note' => 'nullable|string',
-            'status' => 'nullable|string', // "set": the status chosen
+        return response()->json([
+            'task' => $this->present($this->tasks()->find($task->id)),
+            'data' => $messages->map(fn ($m) => [
+                'id' => $m->id,
+                'body' => $m->body,
+                'status' => $m->status,
+                'by' => $m->user?->name,
+                'mine' => (int) $m->user_id === (int) $request->user()->id,
+                'from_assignee' => $m->user_id !== null && (int) $m->user_id === (int) $task->assignee_id,
+                'at' => $this->local($m->created_at),
+            ]),
         ]);
-        $user = $request->user();
-        $task = Task::findOrFail($request->input('id'));
-
-        // Anyone who can see the task may change its status; approving / returning needs the review permission
-        if (!$this->canSee($user, $task)) {
-            return response()->json(['message' => 'لا تملك صلاحية على هذه المهمة'], 403);
-        }
-        if (in_array($request->input('action'), ['approve', 'return'], true) && !TaskPermissions::can($user, 'review')) {
-            return response()->json(['message' => 'لا تملك صلاحية مراجعة المهام'], 403);
-        }
-
-        try {
-            $task = TaskWorkflow::apply($task, $request->input('action'), $user, $request->only(['reason', 'note', 'status']));
-        } catch (TaskWorkflowException $e) {
-            return response()->json(['message' => $e->getMessage()], $e->status());
-        }
-
-        return response()->json(['status' => 'success', 'data' => $this->present($task->fresh(['assignee:id,name', 'reviewer:id,name', 'creator:id,name']))]);
     }
 
-    /** Proof of execution: a file, an image, a text or a link */
-    public function attach(Request $request)
+    public function send(Request $request)
     {
-        $request->validate([
-            'id' => 'required|exists:tasks,id',
-            'type' => 'required|in:' . implode(',', TaskAttachment::TYPES),
-            'file' => 'required_if:type,file,image|file|max:10240',
-            'url' => 'required_if:type,link|nullable|url|max:1000',
-            'body' => 'required_if:type,text|nullable|string|max:5000',
-        ]);
-        $task = Task::findOrFail($request->input('id'));
-        if (!$this->canSee($request->user(), $task)) {
-            return response()->json(['message' => 'لا تملك صلاحية على هذه المهمة'], 403);
-        }
-        $type = $request->input('type');
+        $task = $this->reachable($request);
+        $data = $request->validate(['body' => 'required|string|max:3000'], ['body.required' => 'اكتب الرسالة']);
+        $message = TaskMessage::create(['task_id' => $task->id, 'user_id' => $request->user()->id, 'body' => $data['body']]);
+        $this->markRead($request, $task);
 
-        $data = ['type' => $type];
-        if (in_array($type, ['file', 'image'], true)) {
-            if ($type === 'image' && !str_starts_with((string) $request->file('file')->getMimeType(), 'image/')) {
-                return response()->json(['message' => 'الملف ليس صورة'], 422);
-            }
-            $data['path'] = $request->file('file')->store('task_attachments', 'public');
-            $data['original_name'] = $request->file('file')->getClientOriginalName();
-        } elseif ($type === 'link') {
-            $data['url'] = $request->input('url');
+        return response()->json(['data' => [
+            'id' => $message->id, 'body' => $message->body, 'status' => null, 'by' => $request->user()->name, 'mine' => true,
+            'from_assignee' => $task->isAssignee($request->user()), 'at' => $this->local($message->created_at),
+        ]], 201);
+    }
+
+    // ── Helpers ──
+
+    private function tasks()
+    {
+        return Task::with(['assignee:id,name', 'creator:id,name', 'lastMessage.user:id,name', 'template:id,schedule,event_type,repeat'])
+            ->where('is_template', false)
+            ->latest('id');
+    }
+
+    /** The member it is given to, or the management */
+    private function reachable(Request $request): Task
+    {
+        $task = Task::where('is_template', false)->findOrFail($request->validate(['id' => 'required|integer'])['id']);
+        abort_unless($task->isAssignee($request->user()) || RolePermissions::can($request->user(), 'tasks', 'view'), 403, 'ليست لديك صلاحية');
+
+        return $task;
+    }
+
+    private function markRead(Request $request, Task $task): void
+    {
+        if ($task->isAssignee($request->user())) {
+            $task->update(['assignee_read_at' => now(), 'assignee_seen_at' => $task->assignee_seen_at ?? now()]);
         } else {
-            $data['body'] = $request->input('body');
+            $task->update(['managers_read_at' => now()]);
         }
-
-        try {
-            $attachment = TaskWorkflow::attach($task, $request->user(), $data);
-        } catch (TaskWorkflowException $e) {
-            if (!empty($data['path'])) {
-                Storage::disk('public')->delete($data['path']);
-            }
-            return response()->json(['message' => $e->getMessage()], $e->status());
-        }
-
-        return response()->json(['status' => 'success', 'data' => $this->presentAttachment($attachment)], 201);
     }
 
-    public function deleteAttachment(Request $request)
+    private function validated(Request $request, ?string $kind): array
     {
-        $attachment = TaskAttachment::with('task')->findOrFail($request->input('id'));
-        $task = $attachment->task;
-
-        if ((int) $attachment->uploaded_by !== (int) $request->user()->id || in_array($task->status, ['in_review', 'approved'], true)) {
-            return response()->json(['message' => 'لا يمكن حذف هذا المرفق'], 403);
-        }
-        if ($attachment->path) {
-            Storage::disk('public')->delete($attachment->path);
-        }
-        $attachment->delete();
-
-        return response()->json(['status' => 'success']);
-    }
-
-    /**
-     * Manager dashboard: counts and the on-time rate.
-     * Filter: from / to on the deadline, assignee_id.
-     * On-time rate = approved tasks finished by their deadline ÷ approved tasks with a deadline.
-     */
-    public function stats(Request $request)
-    {
-        if (!TaskPermissions::can($request->user(), 'manage')) {
-            return response()->json(['message' => 'لا تملك صلاحية لوحة المهام'], 403);
-        }
-
-        $query = Task::query();
-        if ($from = $request->query('from')) {
-            $query->where('due_at', '>=', $from);
-        }
-        if ($to = $request->query('to')) {
-            $query->where('due_at', '<=', $to . ' 23:59:59');
-        }
-        if ($assignee = $request->query('assignee_id')) {
-            $query->where('assignee_id', $assignee);
-        }
-        $tasks = $query->with('assignee:id,name')->get();
-
-        $summary = fn ($list) => [
-            'total' => $list->count(),
-            'open' => $list->where('status', '!=', 'approved')->count(),
-            'approved' => $list->where('status', 'approved')->count(),
-            'overdue' => $list->filter(fn (Task $t) => $t->is_overdue)->count(),
-            'blocked' => $list->where('status', 'blocked')->count(),
-            'in_review' => $list->where('status', 'in_review')->count(),
-            'returned' => $list->where('status', 'returned')->count(),
-            'on_time_rate' => $this->onTimeRate($list),
-        ];
-
-        $byAssignee = $tasks->groupBy('assignee_id')->map(fn ($list) => [
-            'assignee_id' => $list->first()->assignee_id,
-            'assignee_name' => $list->first()->assignee?->name,
-        ] + $summary($list))->values()->sortByDesc('total')->values();
-
-        return response()->json(['status' => 'success', 'data' => $summary($tasks) + ['by_assignee' => $byAssignee]]);
-    }
-
-    /** Upcoming matches or training sessions a new task can be linked to (type: match | training) */
-    public function events(Request $request)
-    {
-        $type = $request->query('type', 'match');
-        if (!in_array($type, TaskEvents::TYPES, true)) {
-            return response()->json(['message' => 'نوع غير معروف'], 422);
-        }
-        return response()->json(['status' => 'success', 'data' => TaskEvents::upcoming($type)]);
-    }
-
-    /** People a task can be given to */
-    public function users()
-    {
-        return response()->json(['status' => 'success', 'data' => User::orderBy('name')->get(['id', 'name'])]);
-    }
-
-    private function onTimeRate($list): ?int
-    {
-        $approved = $list->filter(fn (Task $t) => $t->status === 'approved' && $t->due_at);
-        if ($approved->isEmpty()) {
-            return null;
-        }
-        $onTime = $approved->filter(fn (Task $t) => $t->completed_at && $t->completed_at->lessThanOrEqualTo($t->due_at))->count();
-        return (int) round($onTime * 100 / $approved->count());
-    }
-
-    private function validated(Request $request): array
-    {
+        $scheduled = $kind === 'scheduled';
         $data = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'assignee_id' => 'required|exists:users,id',
-            'priority' => 'nullable|in:' . implode(',', Task::PRIORITIES),
-            'starts_at' => 'nullable|date',
-            'due_at' => 'nullable|date|after_or_equal:starts_at',
-            'requires_approval' => 'boolean',
-            'requires_proof' => 'boolean',
+            'title' => 'required|string|max:200',
+            'details' => 'nullable|string|max:5000',
+            'kind' => 'required|in:' . implode(',', Task::KINDS),
+            'nature' => 'required|in:' . implode(',', Task::NATURES),
+            'assignee_id' => 'required|integer|exists:users,id',
+            'due_at' => $scheduled ? 'prohibited' : 'nullable|date',
+            'schedule' => $scheduled ? 'required|in:event,periodic' : 'prohibited',
+            'event_type' => $scheduled ? 'required_if:schedule,event|nullable|in:' . implode(',', Task::EVENTS) : 'prohibited',
+            'repeat' => $scheduled ? 'required_if:schedule,periodic|nullable|in:weekly,monthly' : 'prohibited',
+            'repeat_day' => $scheduled ? 'required_if:schedule,periodic|nullable|integer|min:1|max:31' : 'prohibited',
+            'alert_offset' => $scheduled ? 'required|integer|between:-525600,525600' : 'prohibited',
+            'due_offset' => $scheduled ? 'required|integer|between:-525600,525600|gte:alert_offset' : 'prohibited',
         ], [
-            'due_at.after_or_equal' => 'آخر أجل يجب أن يكون بعد تاريخ البداية',
+            'title.required' => 'اكتب المهمة',
+            'assignee_id.required' => 'اختر المكلّف',
+            'assignee_id.exists' => 'اختر المكلّف',
+            'kind.required' => 'اختر النوع',
+            'nature.required' => 'اختر طبيعة المهمة',
+            'schedule.required' => 'اختر: مرتبطة بحدث أو دورية',
+            'event_type.required_if' => 'اختر الحدث',
+            'repeat.required_if' => 'اختر التكرار',
+            'repeat_day.required_if' => 'اختر اليوم',
+            'alert_offset.required' => 'حدد موعد التنبيه',
+            'due_offset.required' => 'حدد آخر أجل',
+            'due_offset.gte' => 'آخر أجل يكون بعد التنبيه',
+            '*.prohibited' => 'هذا الحقل لا يخص هذا النوع',
         ]);
 
-        $data['priority'] ??= 'normal';
-        $data['requires_approval'] = (bool) ($data['requires_approval'] ?? true);
-        $data['requires_proof'] = (bool) ($data['requires_proof'] ?? false);
-        return $data;
-    }
-
-    private function canSee(User $user, Task $task): bool
-    {
-        return in_array((int) $user->id, [(int) $task->assignee_id, (int) $task->reviewer_id, (int) $task->created_by], true)
-            || TaskPermissions::can($user, 'manage')
-            || ($task->status === 'in_review' && TaskPermissions::can($user, 'review'));
-    }
-
-    private function present(Task $task, bool $full = false): array
-    {
-        $data = [
-            'id' => $task->id,
-            'reference' => $task->reference,
-            'title' => $task->title,
-            'description' => $task->description,
-            'assignee_id' => $task->assignee_id,
-            'assignee_name' => $task->assignee?->name,
-            'reviewer_id' => $task->reviewer_id,
-            'reviewer_name' => $task->reviewer?->name,
-            'created_by' => $task->created_by,
-            'creator_name' => $task->creator?->name,
-            'priority' => $task->priority,
-            'starts_at' => $task->starts_at?->format('Y-m-d H:i'),
-            'due_at' => $task->due_at?->format('Y-m-d H:i'),
-            'requires_approval' => $task->requires_approval,
-            'requires_proof' => $task->requires_proof,
-            'status' => $task->status,
-            'is_overdue' => $task->is_overdue,
-            'block_reason' => $task->block_reason,
-            'block_note' => $task->block_note,
-            'return_reason' => $task->return_reason,
-            'source_type' => $task->source_type,
-            'source_ref' => $task->source_ref,
-            'completed_at' => $task->completed_at?->format('Y-m-d H:i'),
-            'approved_at' => $task->approved_at?->format('Y-m-d H:i'),
-            'created_at' => $task->created_at?->format('Y-m-d H:i'),
-            'deleted_at' => $task->deleted_at?->format('Y-m-d H:i'),
-            'attachments_count' => $task->attachments_count ?? null,
-        ];
-
-        if ($full) {
-            $data['event'] = $task->source_type === 'event' ? TaskEvents::find($task->source_ref) : null;
-            // The periodic / automatic task this one comes from, so it can be stopped or deleted from here
-            $template = $task->template_id ? $task->template : null;
-            $data['template'] = $template ? [
-                'id' => $template->id,
-                'kind' => $template->kind,
-                'rrule' => $template->rrule,
-                'trigger' => $template->trigger,
-                'active' => $template->active,
-                'next_run_at' => $template->next_run_at?->format('Y-m-d H:i'),
-                'tasks_count' => $template->tasks()->count(),
-                'can_manage' => TaskTemplateController::canManage(request()->user(), $template),
-            ] : null;
-            $data['attachments'] = $task->attachments->map(fn ($a) => $this->presentAttachment($a))->values();
-            $data['history'] = $task->history->map(fn ($h) => [
-                'id' => $h->id,
-                'action' => $h->action,
-                'from_status' => $h->from_status,
-                'to_status' => $h->to_status,
-                'note' => $h->note,
-                'user_name' => $h->user?->name,
-                'created_at' => $h->created_at?->format('Y-m-d H:i'),
-            ])->values();
+        if ($scheduled && $data['schedule'] === 'periodic') {
+            if ($data['repeat'] === 'weekly' && $data['repeat_day'] > 7) {
+                abort(response()->json(['message' => 'اختر يوماً من الأسبوع', 'errors' => ['repeat_day' => ['اختر يوماً من الأسبوع']]], 422));
+            }
+            // From the day's start: the alert on that day
+            if ($data['alert_offset'] < 0) {
+                abort(response()->json(['message' => 'التنبيه يكون في يوم المهمة أو بعده', 'errors' => ['alert_offset' => ['التنبيه يكون في يوم المهمة أو بعده']]], 422));
+            }
         }
+
         return $data;
     }
 
-    private function presentAttachment(TaskAttachment $a): array
+    private function templateFields(array $data): array
+    {
+        $event = $data['schedule'] === 'event';
+
+        return [
+            'schedule' => $data['schedule'],
+            'event_type' => $event ? $data['event_type'] : null,
+            'repeat' => $event ? null : $data['repeat'],
+            'repeat_day' => $event ? null : $data['repeat_day'],
+            'alert_offset' => $data['alert_offset'],
+            'due_offset' => $data['due_offset'],
+        ];
+    }
+
+    private function allow(Request $request, string $action): void
+    {
+        abort_unless(RolePermissions::can($request->user(), 'tasks', $action), 403, 'ليست لديك صلاحية');
+    }
+
+    /** A timestamp in the club's time */
+    private function local($time): ?string
+    {
+        return $time ? Carbon::parse($time)->setTimezone('Africa/Algiers')->format('Y-m-d H:i') : null;
+    }
+
+    private function present(Task $t): array
+    {
+        $now = TaskSchedule::localNow();
+        $last = $t->lastMessage;
+
+        return [
+            'id' => $t->id,
+            'title' => $t->title,
+            'details' => $t->details,
+            'kind' => $t->kind,
+            'nature' => $t->nature,
+            'status' => $t->status,
+            // Not a status anyone picks: the deadline passed and it is not finished
+            'overdue' => $t->isOpen() && $t->due_at !== null && $t->due_at->lt($now),
+            'alert_at' => $t->alert_at?->format('Y-m-d H:i'),
+            'due_at' => $t->due_at?->format('Y-m-d H:i'),
+            'event_label' => $t->event_label,
+            // Where it comes from: an event (match, training, travel, meeting), periodic, or given directly
+            'source' => $t->template?->schedule === 'event' ? $t->template->event_type
+                : ($t->template?->schedule === 'periodic' ? 'periodic' : ($t->source_ref ? strtok($t->source_ref, ':') : null)),
+            'template_id' => $t->template_id,
+            'assignee' => $t->assignee ? ['id' => $t->assignee->id, 'name' => $t->assignee->name] : null,
+            'created_by' => $t->creator?->name,
+            'seen' => $t->assignee_seen_at !== null,
+            'unread' => (int) ($t->unread ?? 0),
+            'last_message' => $last ? [
+                'body' => $last->body,
+                'status' => $last->status,
+                'by' => $last->user?->name,
+                'at' => $this->local($last->created_at),
+            ] : null,
+            'done_at' => $this->local($t->done_at),
+            'created_at' => $this->local($t->created_at),
+        ];
+    }
+
+    private function presentTemplate(Task $t): array
     {
         return [
-            'id' => $a->id,
-            'type' => $a->type,
-            'name' => $a->original_name,
-            'url' => $a->path ? asset('storage/' . $a->path) : $a->url,
-            'body' => $a->body,
-            'uploaded_by' => $a->uploaded_by,
-            'uploader_name' => $a->uploader?->name,
-            'created_at' => $a->created_at?->format('Y-m-d H:i'),
+            'id' => $t->id,
+            'title' => $t->title,
+            'details' => $t->details,
+            'nature' => $t->nature,
+            'schedule' => $t->schedule,
+            'event_type' => $t->event_type,
+            'repeat' => $t->repeat,
+            'repeat_day' => $t->repeat_day,
+            'alert_offset' => $t->alert_offset,
+            'due_offset' => $t->due_offset,
+            'status' => $t->status,
+            'assignee' => $t->assignee ? ['id' => $t->assignee->id, 'name' => $t->assignee->name] : null,
+            'created_by' => $t->creator?->name,
+            'tasks_count' => (int) ($t->tasks_count ?? 0),
+            'created_at' => $this->local($t->created_at),
         ];
     }
 }

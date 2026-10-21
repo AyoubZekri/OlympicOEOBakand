@@ -94,8 +94,8 @@ class MemberAccount
 
     /**
      * The member is being deleted: delete its account too, unless that would lose history.
-     * The account is kept (just no longer linked) when it is the signed-in user's own, when tasks are assigned to it
-     * (they would be deleted with it), or when other records point to it (equipment, disciplinary, matches…).
+     * The account is kept (just no longer linked) when it is the signed-in user's own,
+     * or when other records point to it (equipment, disciplinary, matches…).
      *
      * @return string|null why the account was kept, or null when it was deleted (or there was none)
      */
@@ -107,10 +107,6 @@ class MemberAccount
         }
         if ($actor && (int) $actor->id === (int) $user->id) {
             return 'لم يُحذف حساب المستخدم لأنه حسابك الحالي';
-        }
-        if (\App\Models\Task::withTrashed()->where('assignee_id', $user->id)->exists()
-            || \App\Models\TaskTemplate::where('assignee_id', $user->id)->exists()) {
-            return 'لم يُحذف حساب المستخدم لأن له مهاماً مسندة، حتى لا تُحذف معه';
         }
 
         try {

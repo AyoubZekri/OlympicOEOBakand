@@ -7,13 +7,6 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Periodic tasks: create the occurrences that are due (templates with an RRULE)
-Artisan::command('tasks:generate-periodic', function () {
-    $created = \App\Services\Tasks\TaskGenerator::runPeriodic();
-    $this->info("Created {$created} periodic task(s).");
-})->purpose('Create the periodic tasks that are due');
-
-\Illuminate\Support\Facades\Schedule::command('tasks:generate-periodic')->everyFifteenMinutes()->withoutOverlapping();
 
 // Members added before accounts existed: give each one its user account (generated email when none, random password)
 Artisan::command('members:create-accounts', function () {
@@ -24,3 +17,10 @@ Artisan::command('members:create-accounts', function () {
     });
     $this->info("Created {$count} member account(s).");
 })->purpose('Create the user accounts of the members that have none');
+
+// Periodic tasks: create the ones that are due (the tasks' lists also do it when opened, so it works without cron too)
+Artisan::command('tasks:generate', function () {
+    \App\Services\TaskSchedule::generateDue(true);
+    $this->info('Periodic tasks checked.');
+})->purpose('Create the periodic tasks that are due');
+\Illuminate\Support\Facades\Schedule::command('tasks:generate')->hourly();

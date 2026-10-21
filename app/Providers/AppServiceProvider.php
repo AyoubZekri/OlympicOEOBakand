@@ -19,12 +19,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Tasks created automatically when a match, a training session or a meeting is created
-        \App\Services\Tasks\TaskEventHooks::register();
 
         // The login tokens: checked from a file a minute long, not from the database on every request
         \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
         \App\Models\User::saved(fn ($user) => \App\Models\PersonalAccessToken::forgetUser($user->id));
+
+        // A new match / training session / trip / meeting creates the tasks of the appointments linked to it
+        \App\Services\TaskSchedule::register();
 
         // Any record saved or deleted (also by the scheduled tasks) raises the alerts' version
         $bump = function (string $event, array $data) {

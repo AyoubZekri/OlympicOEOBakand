@@ -3,47 +3,39 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
+/** A task given to one member, or an appointment (is_template) that creates tasks: on an event, or periodically */
 class Task extends Model
 {
-    use SoftDeletes;
-
-    public const STATUSES = ['assigned', 'in_progress', 'blocked', 'in_review', 'approved', 'returned'];
-    public const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
-    public const BLOCK_REASONS = ['waiting_decision', 'financial', 'missing_resources', 'external', 'other'];
+    public const KINDS = ['normal', 'urgent', 'scheduled'];
+    public const NATURES = ['internal', 'external', 'call'];
+    public const STATUSES = ['new', 'in_progress', 'on_hold', 'done', 'cancelled'];
+    public const EVENTS = ['match', 'training', 'travel', 'meeting'];
 
     protected $fillable = [
-        'reference', 'title', 'description', 'assignee_id', 'reviewer_id', 'created_by', 'priority',
-        'starts_at', 'due_at', 'requires_approval', 'requires_proof', 'status', 'block_reason', 'block_note',
-        'return_reason', 'source_type', 'source_ref', 'template_id', 'completed_at', 'approved_at',
+        'title', 'details', 'kind', 'nature', 'assignee_id', 'created_by',
+        'is_template', 'schedule', 'event_type', 'repeat', 'repeat_day', 'alert_offset', 'due_offset', 'last_run_on',
+        'template_id', 'source_ref', 'event_label', 'alert_at', 'due_at', 'status', 'done_at',
+        'assignee_seen_at', 'assignee_read_at', 'managers_read_at',
     ];
 
     protected $casts = [
-        'starts_at' => 'datetime',
+        'is_template' => 'boolean',
+        'repeat_day' => 'integer',
+        'alert_offset' => 'integer',
+        'due_offset' => 'integer',
+        'last_run_on' => 'date',
+        'alert_at' => 'datetime',
         'due_at' => 'datetime',
-        'completed_at' => 'datetime',
-        'approved_at' => 'datetime',
-        'requires_approval' => 'boolean',
-        'requires_proof' => 'boolean',
+        'done_at' => 'datetime',
+        'assignee_seen_at' => 'datetime',
+        'assignee_read_at' => 'datetime',
+        'managers_read_at' => 'datetime',
     ];
-
-    protected $appends = ['is_overdue'];
-
-    /** Overdue is never stored: past the deadline and not approved yet */
-    public function getIsOverdueAttribute(): bool
-    {
-        return $this->due_at !== null && $this->status !== 'approved' && $this->due_at->isPast();
-    }
 
     public function assignee()
     {
         return $this->belongsTo(User::class, 'assignee_id');
-    }
-
-    public function reviewer()
-    {
-        return $this->belongsTo(User::class, 'reviewer_id');
     }
 
     public function creator()
@@ -51,18 +43,36 @@ class Task extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function attachments()
-    {
-        return $this->hasMany(TaskAttachment::class);
-    }
-
-    public function history()
-    {
-        return $this->hasMany(TaskStatusHistory::class)->orderBy('created_at')->orderBy('id');
-    }
-
     public function template()
     {
-        return $this->belongsTo(TaskTemplate::class);
+        return $this->belongsTo(Task::class, 'template_id');
+    }
+
+    /** The tasks an appointment created */
+    public function children()
+    {
+        return $this->hasMany(Task::class, 'template_id');
+    }
+
+    public function messages()
+    {
+        return $this->hasMany(TaskMessage::class);
+    }
+
+    public function lastMessage()
+    {
+        return $this->hasOne(TaskMessage::class)->latestOfMany();
+    }
+
+    /** The member it is given to */
+    public function isAssignee(?User $user): bool
+    {
+        return $user !== null && $this->assignee_id !== null && (int) $this->assignee_id === (int) $user->id;
+    }
+
+    /** Still to do: not done, not cancelled */
+    public function isOpen(): bool
+    {
+        return in_array($this->status, ['new', 'in_progress', 'on_hold'], true);
     }
 }

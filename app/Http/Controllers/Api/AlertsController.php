@@ -15,7 +15,6 @@ class AlertsController extends Controller
 {
     /** The lists the alerts are made from (read only), the only ones "all" gives */
     private const SOURCES = [
-        '/tasks',
         '/disciplinary/mine', '/disciplinary', '/disciplinary/officiating',
         '/training-sessions/mine', '/training-sessions', '/training-sessions/mine/notices',
         '/matches/mine', '/matches', '/matches/mine/notices',
@@ -25,6 +24,7 @@ class AlertsController extends Controller
         '/medical-records/mine', '/medical-records', '/medical-records/mine/notices',
         '/debts', '/payments/credit',
         '/feedback/mine', '/feedback',
+        '/tasks/mine', '/tasks',
     ];
 
     public function version()

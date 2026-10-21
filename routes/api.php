@@ -49,6 +49,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/training-attendance/save', [App\Http\Controllers\Api\TrainingAttendanceController::class, 'saveAttendance']);
 
     // Members' opinions: sent from the personal space, replied to (and a suggestion rated) by the management
+    // Tasks: the member's own (and the conversation), the management's (tasks.*)
+    Route::get('/tasks/mine', [App\Http\Controllers\Api\TaskController::class, 'mine']);
+    Route::get('/tasks', [App\Http\Controllers\Api\TaskController::class, 'index']);
+    Route::get('/tasks/templates', [App\Http\Controllers\Api\TaskController::class, 'templates']);
+    Route::post('/tasks/create', [App\Http\Controllers\Api\TaskController::class, 'store']);
+    Route::post('/tasks/update', [App\Http\Controllers\Api\TaskController::class, 'update']);
+    Route::post('/tasks/status', [App\Http\Controllers\Api\TaskController::class, 'status']);
+    Route::post('/tasks/templates/toggle', [App\Http\Controllers\Api\TaskController::class, 'toggle']);
+    Route::post('/tasks/delete', [App\Http\Controllers\Api\TaskController::class, 'destroy']);
+    Route::get('/tasks/messages', [App\Http\Controllers\Api\TaskController::class, 'messages']);
+    Route::post('/tasks/messages/send', [App\Http\Controllers\Api\TaskController::class, 'send']);
+
     Route::get('/feedback/mine', [App\Http\Controllers\Api\MemberFeedbackController::class, 'mine']);
     Route::post('/feedback/mine/create', [App\Http\Controllers\Api\MemberFeedbackController::class, 'storeMine']);
     Route::post('/feedback/mine/delete', [App\Http\Controllers\Api\MemberFeedbackController::class, 'destroyMine']);
@@ -244,24 +256,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/debts/repay', [\App\Http\Controllers\Api\DebtController::class, 'repay']);
     Route::post('/debts/repayments/delete', [\App\Http\Controllers\Api\DebtController::class, 'destroyRepayment']);
 
-    // Tasks
-    Route::get('/tasks', [\App\Http\Controllers\Api\TaskController::class, 'index']);
-    Route::get('/tasks/stats', [\App\Http\Controllers\Api\TaskController::class, 'stats']);
-    Route::get('/tasks/users', [\App\Http\Controllers\Api\TaskController::class, 'users']);
-    Route::get('/tasks/events', [\App\Http\Controllers\Api\TaskController::class, 'events']);
-    Route::get('/tasks/templates', [\App\Http\Controllers\Api\TaskTemplateController::class, 'index']);
-    Route::post('/tasks/templates/create', [\App\Http\Controllers\Api\TaskTemplateController::class, 'store']);
-    Route::post('/tasks/templates/update', [\App\Http\Controllers\Api\TaskTemplateController::class, 'update']);
-    Route::post('/tasks/templates/delete', [\App\Http\Controllers\Api\TaskTemplateController::class, 'destroy']);
-    Route::post('/tasks/templates/toggle', [\App\Http\Controllers\Api\TaskTemplateController::class, 'toggle']);
-    Route::post('/tasks/create', [\App\Http\Controllers\Api\TaskController::class, 'store']);
-    Route::post('/tasks/update', [\App\Http\Controllers\Api\TaskController::class, 'update']);
-    Route::post('/tasks/delete', [\App\Http\Controllers\Api\TaskController::class, 'destroy']);
-    Route::post('/tasks/restore', [\App\Http\Controllers\Api\TaskController::class, 'restore']);
-    Route::post('/tasks/action', [\App\Http\Controllers\Api\TaskController::class, 'action']);
-    Route::post('/tasks/attachments/create', [\App\Http\Controllers\Api\TaskController::class, 'attach']);
-    Route::post('/tasks/attachments/delete', [\App\Http\Controllers\Api\TaskController::class, 'deleteAttachment']);
-    Route::get('/tasks/{id}', [\App\Http\Controllers\Api\TaskController::class, 'show'])->whereNumber('id');
 });
 
 use App\Http\Controllers\Api\MeetingController;
