@@ -7,7 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 /** A task given to one member, or an appointment (is_template) that creates tasks: on an event, or periodically */
 class Task extends Model
 {
-    public const KINDS = ['normal', 'urgent', 'scheduled'];
+    /** normal, urgent, a voice note (dictated with the microphone), or an appointment (scheduled) */
+    public const KINDS = ['normal', 'urgent', 'voice', 'scheduled'];
+    /** Given at once with no deadline: only what to do, who, and its nature */
+    public const NO_DEADLINE = ['urgent', 'voice'];
     public const NATURES = ['internal', 'external', 'call'];
     public const STATUSES = ['new', 'in_progress', 'on_hold', 'done', 'cancelled'];
     public const EVENTS = ['match', 'training', 'travel', 'meeting'];

@@ -104,8 +104,8 @@ class TaskController extends Controller
     {
         $this->allow($request, 'edit');
         $task = Task::findOrFail($request->validate(['id' => 'required|integer'])['id']);
-        // A task an appointment created keeps its dates (they follow the event / the day)
-        $data = $this->validated($request, $task->is_template, $task->kind === 'scheduled' && !$task->is_template);
+        // A task an appointment created keeps its dates (they follow the event / the day); urgent and voice ones have none
+        $data = $this->validated($request, $task->is_template, $task->kind !== 'normal' && !$task->is_template);
 
         $fields = ['title' => $data['title'], 'details' => $data['details'] ?? null, 'nature' => $data['nature'], 'assignee_id' => $data['assignee_id']];
         if ((int) $task->assignee_id !== (int) $data['assignee_id']) {
@@ -118,7 +118,7 @@ class TaskController extends Controller
             return response()->json(['data' => $this->presentTemplate($task->fresh(['assignee', 'creator'])->loadCount(['children as tasks_count']))]);
         }
 
-        $task->update($fields + ($task->kind === 'scheduled' ? [] : ['due_at' => $data['due_at'] ?? null]));
+        $task->update($fields + ($task->kind === 'normal' ? ['due_at' => $data['due_at'] ?? null] : []));
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
     }
@@ -234,8 +234,8 @@ class TaskController extends Controller
         }
     }
 
-    /** $scheduled: an appointment's fields; $fromAppointment: a task an appointment created (no deadline of its own) */
-    private function validated(Request $request, bool $scheduled, bool $fromAppointment = false): array
+    /** $scheduled: an appointment's fields; $noDeadline: a task with no deadline of its own (an appointment's, urgent, voice) */
+    private function validated(Request $request, bool $scheduled, bool $noDeadline = false): array
     {
         $data = $request->validate([
             'title' => 'required|string|max:200',
@@ -243,7 +243,7 @@ class TaskController extends Controller
             'kind' => 'required|in:' . implode(',', Task::KINDS),
             'nature' => 'required|in:' . implode(',', Task::NATURES),
             'assignee_id' => 'required|integer|exists:users,id',
-            'due_at' => $scheduled || $fromAppointment ? 'prohibited' : 'nullable|date',
+            'due_at' => $scheduled || $noDeadline || in_array($request->input('kind'), Task::NO_DEADLINE, true) ? 'prohibited' : 'nullable|date',
             'schedule' => $scheduled ? 'required|in:event,periodic' : 'prohibited',
             'event_type' => $scheduled ? 'required_if:schedule,event|nullable|in:' . implode(',', Task::EVENTS) : 'prohibited',
             'repeat' => $scheduled ? 'required_if:schedule,periodic|nullable|in:weekly,monthly' : 'prohibited',

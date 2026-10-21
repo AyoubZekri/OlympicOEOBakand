@@ -48,8 +48,16 @@ class TaskTest extends TestCase
         // A normal task: no appointment fields
         $this->as($manager)->postJson('/api/tasks/create', $this->task(['assignee_id' => $member->id, 'schedule' => 'event']))->assertStatus(422);
 
-        $id = $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'urgent', 'nature' => 'call', 'assignee_id' => $member->id, 'due_at' => now('Africa/Algiers')->format('Y-m-d') . ' 12:00']))
-            ->assertCreated()->assertJsonPath('data.status', 'new')->assertJsonPath('data.kind', 'urgent')->assertJsonPath('data.overdue', false)->json('data.id');
+        // Urgent and voice notes: no deadline, only what to do, who and its nature
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'urgent', 'assignee_id' => $member->id, 'due_at' => '2026-12-01 12:00']))->assertStatus(422);
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'voice', 'assignee_id' => $member->id, 'due_at' => '2026-12-01 12:00']))->assertStatus(422);
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'voice', 'title' => 'اتصل بالحكم قبل المساء', 'assignee_id' => $member->id]))
+            ->assertCreated()->assertJsonPath('data.kind', 'voice')->assertJsonPath('data.due_at', null);
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'urgent', 'assignee_id' => $member->id]))->assertCreated()->assertJsonPath('data.kind', 'urgent');
+        Task::query()->delete();
+
+        $id = $this->as($manager)->postJson('/api/tasks/create', $this->task(['nature' => 'call', 'assignee_id' => $member->id, 'due_at' => now('Africa/Algiers')->format('Y-m-d') . ' 12:00']))
+            ->assertCreated()->assertJsonPath('data.status', 'new')->assertJsonPath('data.kind', 'normal')->assertJsonPath('data.overdue', false)->json('data.id');
 
         // The member sees it (new to them), and cannot change its status
         $this->as($member)->getJson('/api/tasks/mine')->assertOk()->assertJsonCount(1, 'data')

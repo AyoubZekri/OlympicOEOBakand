@@ -19,7 +19,7 @@ return new class extends Migration
             $table->id();
             $table->string('title', 200);
             $table->text('details')->nullable();
-            // normal | urgent (given at once) | scheduled (an appointment and the tasks it creates)
+            // normal | urgent | voice (given at once; urgent and voice: no deadline) | scheduled (an appointment and the tasks it creates)
             $table->string('kind', 12);
             // internal | external | call
             $table->string('nature', 12);
