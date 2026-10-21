@@ -53,6 +53,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tasks/mine', [App\Http\Controllers\Api\TaskController::class, 'mine']);
     Route::get('/tasks', [App\Http\Controllers\Api\TaskController::class, 'index']);
     Route::get('/tasks/templates', [App\Http\Controllers\Api\TaskController::class, 'templates']);
+    Route::get('/tasks/users', [App\Http\Controllers\Api\TaskController::class, 'users']);
     Route::post('/tasks/create', [App\Http\Controllers\Api\TaskController::class, 'store']);
     Route::post('/tasks/update', [App\Http\Controllers\Api\TaskController::class, 'update']);
     Route::post('/tasks/status', [App\Http\Controllers\Api\TaskController::class, 'status']);

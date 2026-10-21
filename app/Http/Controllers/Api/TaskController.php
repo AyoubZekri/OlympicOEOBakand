@@ -62,11 +62,20 @@ class TaskController extends Controller
         return response()->json(['data' => $templates->map(fn ($t) => $this->presentTemplate($t))]);
     }
 
+    /** Who a task can be given to: the members with an account */
+    public function users(Request $request)
+    {
+        abort_unless(RolePermissions::can($request->user(), 'tasks', 'add') || RolePermissions::can($request->user(), 'tasks', 'edit'), 403, 'ليست لديك صلاحية');
+        $users = \App\Models\User::orderBy('name')->get(['id', 'name']);
+
+        return response()->json(['data' => $users->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])]);
+    }
+
     /** A normal or urgent task (given at once), or an appointment (scheduled) */
     public function store(Request $request)
     {
         $this->allow($request, 'add');
-        $data = $this->validated($request, $request->input('kind'));
+        $data = $this->validated($request, $request->input('kind') === 'scheduled');
 
         if ($data['kind'] === 'scheduled') {
             $task = Task::create($this->templateFields($data) + [
@@ -95,7 +104,8 @@ class TaskController extends Controller
     {
         $this->allow($request, 'edit');
         $task = Task::findOrFail($request->validate(['id' => 'required|integer'])['id']);
-        $data = $this->validated($request, $task->kind);
+        // A task an appointment created keeps its dates (they follow the event / the day)
+        $data = $this->validated($request, $task->is_template, $task->kind === 'scheduled' && !$task->is_template);
 
         $fields = ['title' => $data['title'], 'details' => $data['details'] ?? null, 'nature' => $data['nature'], 'assignee_id' => $data['assignee_id']];
         if ((int) $task->assignee_id !== (int) $data['assignee_id']) {
@@ -224,16 +234,16 @@ class TaskController extends Controller
         }
     }
 
-    private function validated(Request $request, ?string $kind): array
+    /** $scheduled: an appointment's fields; $fromAppointment: a task an appointment created (no deadline of its own) */
+    private function validated(Request $request, bool $scheduled, bool $fromAppointment = false): array
     {
-        $scheduled = $kind === 'scheduled';
         $data = $request->validate([
             'title' => 'required|string|max:200',
             'details' => 'nullable|string|max:5000',
             'kind' => 'required|in:' . implode(',', Task::KINDS),
             'nature' => 'required|in:' . implode(',', Task::NATURES),
             'assignee_id' => 'required|integer|exists:users,id',
-            'due_at' => $scheduled ? 'prohibited' : 'nullable|date',
+            'due_at' => $scheduled || $fromAppointment ? 'prohibited' : 'nullable|date',
             'schedule' => $scheduled ? 'required|in:event,periodic' : 'prohibited',
             'event_type' => $scheduled ? 'required_if:schedule,event|nullable|in:' . implode(',', Task::EVENTS) : 'prohibited',
             'repeat' => $scheduled ? 'required_if:schedule,periodic|nullable|in:weekly,monthly' : 'prohibited',
