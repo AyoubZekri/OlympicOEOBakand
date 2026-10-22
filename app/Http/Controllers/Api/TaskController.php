@@ -82,8 +82,8 @@ class TaskController extends Controller
                 'title' => $data['title'], 'details' => $data['details'] ?? null, 'kind' => 'scheduled', 'nature' => $data['nature'],
                 'assignee_id' => $data['assignee_id'], 'created_by' => $request->user()->id, 'is_template' => true, 'status' => 'active',
             ]);
-            // A periodic one whose day is today: today's task at once
-            if ($task->schedule === 'periodic') {
+            // A periodic one whose day is today, or a birthday whose alert time came: its task at once
+            if ($task->schedule === 'periodic' || $task->event_type === 'birthday') {
                 TaskSchedule::generateDue(true);
             }
 
@@ -155,7 +155,7 @@ class TaskController extends Controller
         $template->update(['status' => $resume ? 'active' : 'paused']
             // Started again: from today, not the days it was stopped
             + ($resume ? ['last_run_on' => TaskSchedule::localNow()->subDay()->toDateString()] : []));
-        if ($resume && $template->schedule === 'periodic') {
+        if ($resume && ($template->schedule === 'periodic' || $template->event_type === 'birthday')) {
             TaskSchedule::generateDue(true);
         }
 
@@ -169,6 +169,18 @@ class TaskController extends Controller
         Task::findOrFail($request->validate(['id' => 'required|integer'])['id'])->delete();
 
         return response()->json(['message' => 'تم الحذف']);
+    }
+
+    /** The member opened the task: no longer "new" (the conversation stays unread until it is opened) */
+    public function seen(Request $request)
+    {
+        $task = Task::where('is_template', false)->where('assignee_id', $request->user()->id)
+            ->findOrFail($request->validate(['id' => 'required|integer'])['id']);
+        if (!$task->assignee_seen_at) {
+            $task->update(['assignee_seen_at' => now()]);
+        }
+
+        return response()->json(['message' => 'ok']);
     }
 
     // ── The conversation (the member and the management) ──

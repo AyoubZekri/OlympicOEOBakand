@@ -110,6 +110,40 @@ class TaskSchedule
                 }
                 $template->update(['last_run_on' => $today->toDateString()]);
             });
+
+        self::generateBirthdays($today);
+    }
+
+    /**
+     * Birthday appointments: each member's birthday creates its task once its alert time comes
+     * (this year's, or next year's when the alert is before the new year). Not for birthdays already past
+     * by more than a week, nor before the appointment existed.
+     */
+    private static function generateBirthdays(Carbon $today): void
+    {
+        $templates = Task::where('is_template', true)->where('schedule', 'event')->where('event_type', 'birthday')->where('status', 'active')->get();
+        if ($templates->isEmpty()) {
+            return;
+        }
+        $now = self::localNow();
+        $members = \App\Models\Individual::whereNotNull('birth_date')->get(['id', 'first_name', 'last_name', 'birth_date']);
+
+        foreach ($templates as $template) {
+            $since = Carbon::parse($template->created_at->copy()->setTimezone('Africa/Algiers')->toDateString());
+            foreach ($members as $member) {
+                $born = Carbon::parse($member->birth_date);
+                foreach ([$today->year, $today->year + 1] as $year) {
+                    // 29 February: the 28th in the other years
+                    $day = Carbon::create($year, $born->month, min($born->day, Carbon::create($year, $born->month, 1)->daysInMonth));
+                    $alertAt = $day->copy()->addMinutes(min((int) $template->alert_offset, 0));
+                    if ($day->lt($since) || $day->lt($today->copy()->subDays(7)) || $alertAt->gt($now)) {
+                        continue;
+                    }
+                    $name = trim($member->first_name . ' ' . $member->last_name);
+                    self::spawn($template, "birthday:{$member->id}:{$year}", $day, 'عيد ميلاد ' . $name . ' · ' . $day->format('Y/m/d'));
+                }
+            }
+        }
     }
 
     /** weekly: 1 = Monday … 7 = Sunday; monthly: the day, or the month's last day when it is shorter */

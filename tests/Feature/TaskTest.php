@@ -66,8 +66,11 @@ class TaskTest extends TestCase
         $this->as($member)->getJson('/api/tasks')->assertForbidden();
 
         // The conversation: the member writes, the managers see it unread until they open it
-        $this->as($member)->getJson('/api/tasks/messages?id=' . $id)->assertOk();
+        // Opened: no longer new (only the member it is given to marks it)
+        $this->as($manager)->postJson('/api/tasks/seen', ['id' => $id])->assertNotFound();
+        $this->as($member)->postJson('/api/tasks/seen', ['id' => $id])->assertOk();
         $this->as($member)->getJson('/api/tasks/mine')->assertJsonPath('data.0.seen', true);
+        $this->as($member)->getJson('/api/tasks/messages?id=' . $id)->assertOk();
         $this->travel(1)->minutes();
         $this->as($member)->postJson('/api/tasks/messages/send', ['id' => $id, 'body' => 'اتصلت بهم، ينتظرون الوثائق'])->assertCreated()->assertJsonPath('data.from_assignee', true);
         $this->as($manager)->getJson('/api/tasks')->assertJsonPath('data.0.unread', 1)->assertJsonPath('data.0.last_message.body', 'اتصلت بهم، ينتظرون الوثائق');
@@ -129,6 +132,34 @@ class TaskTest extends TestCase
         $task = Task::where('template_id', $template)->first();
         $this->assertSame('cancelled', $task->status);
         $this->assertSame('cancelled', $task->messages()->first()->status);
+    }
+
+    public function test_a_birthday_appointment_creates_a_task_for_each_member_when_its_alert_comes(): void
+    {
+        $manager = $this->manager();
+        $member = User::factory()->create();
+        // 2026-10-22, 09:00 in Algeria
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-22 09:00', 'Africa/Algiers')->utc());
+        \App\Models\Individual::create(['type' => 'player', 'first_name' => 'ياسين', 'last_name' => 'كريم', 'birth_date' => '2008-10-23']);
+        \App\Models\Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'birth_date' => '2007-12-15']);
+        \App\Models\Individual::create(['type' => 'player', 'first_name' => 'بلا', 'last_name' => 'تاريخ']);
+
+        // The alert a day before the birthday, the deadline on the day at 12:00
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['title' => 'تهنئة العضو', 'kind' => 'scheduled', 'assignee_id' => $member->id,
+            'schedule' => 'event', 'event_type' => 'birthday', 'alert_offset' => -1440, 'due_offset' => 720]))->assertCreated();
+
+        // Tomorrow's birthday: its alert time came (today); December's: not yet
+        $this->as($member)->getJson('/api/tasks/mine')->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.source', 'birthday')
+            ->assertJsonPath('data.0.event_label', 'عيد ميلاد ياسين كريم · 2026/10/23')
+            ->assertJsonPath('data.0.alert_at', '2026-10-22 00:00')->assertJsonPath('data.0.due_at', '2026-10-23 12:00');
+
+        // Checked again: still one; on 14 December, the second one
+        TaskSchedule::generateDue(true);
+        $this->assertSame(1, Task::where('is_template', false)->count());
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-12-14 08:00', 'Africa/Algiers')->utc());
+        TaskSchedule::generateDue(true);
+        $this->assertSame(2, Task::where('is_template', false)->count());
     }
 
     public function test_a_periodic_appointment_creates_its_task_on_its_day(): void

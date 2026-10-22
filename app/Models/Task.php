@@ -13,7 +13,8 @@ class Task extends Model
     public const NO_DEADLINE = ['urgent', 'voice'];
     public const NATURES = ['internal', 'external', 'call'];
     public const STATUSES = ['new', 'in_progress', 'on_hold', 'done', 'cancelled'];
-    public const EVENTS = ['match', 'training', 'travel', 'meeting'];
+    /** birthday: every member's birthday (yearly), the others: every new event */
+    public const EVENTS = ['match', 'training', 'travel', 'meeting', 'birthday'];
 
     protected $fillable = [
         'title', 'details', 'kind', 'nature', 'assignee_id', 'created_by',
