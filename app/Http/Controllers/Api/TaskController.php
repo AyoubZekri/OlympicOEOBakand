@@ -130,10 +130,9 @@ class TaskController extends Controller
         $data = $request->validate([
             'id' => 'required|integer',
             'status' => 'required|in:' . implode(',', Task::STATUSES),
-            'note' => 'nullable|string|max:2000|required_if:status,on_hold|required_if:status,cancelled',
+            'note' => 'nullable|string|max:2000',
         ], [
             'status.in' => 'حالة غير صالحة',
-            'note.required_if' => 'اكتب السبب',
         ]);
         $task = Task::where('is_template', false)->findOrFail($data['id']);
         if ($task->status === $data['status']) {
