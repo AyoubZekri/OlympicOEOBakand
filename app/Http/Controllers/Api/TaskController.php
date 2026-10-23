@@ -99,13 +99,27 @@ class TaskController extends Controller
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))], 201);
     }
 
-    /** Edited: its text, its member, its nature, its deadline (a task) or its schedule (an appointment); the kind stays */
+    /**
+     * Edited: its text, its member, its nature, and by its kind — a normal one its deadline, an appointment's task its
+     * alert and deadline (that task only), an appointment its schedule. A normal task can become urgent and back;
+     * the other kinds stay.
+     */
     public function update(Request $request)
     {
         $this->allow($request, 'edit');
         $task = Task::findOrFail($request->validate(['id' => 'required|integer'])['id']);
-        // A task an appointment created keeps its dates (they follow the event / the day); urgent and voice ones have none
-        $data = $this->validated($request, $task->is_template, $task->kind !== 'normal' && !$task->is_template);
+        $kind = (string) $request->input('kind');
+        $switchable = !$task->is_template && in_array($task->kind, ['normal', 'urgent'], true);
+        if ($switchable ? !in_array($kind, ['normal', 'urgent'], true) : $kind !== $task->kind) {
+            abort(response()->json(['message' => 'لا يمكن تحويل المهمة إلى هذا النوع', 'errors' => ['kind' => ['لا يمكن تحويل المهمة إلى هذا النوع']]], 422));
+        }
+        // An appointment's task: its own alert and deadline
+        $generated = !$task->is_template && $task->kind === 'scheduled';
+        $data = $this->validated($request, $task->is_template, $kind !== 'normal' && !$generated);
+        $dates = $generated ? $request->validate(
+            ['alert_at' => 'nullable|date', 'due_at' => 'nullable|date|after_or_equal:alert_at'],
+            ['due_at.after_or_equal' => 'آخر أجل يكون بعد التنبيه'],
+        ) : [];
 
         $fields = ['title' => $data['title'], 'details' => $data['details'] ?? null, 'nature' => $data['nature'], 'assignee_id' => $data['assignee_id']];
         if ((int) $task->assignee_id !== (int) $data['assignee_id']) {
@@ -118,7 +132,12 @@ class TaskController extends Controller
             return response()->json(['data' => $this->presentTemplate($task->fresh(['assignee', 'creator'])->loadCount(['children as tasks_count']))]);
         }
 
-        $task->update($fields + ($task->kind === 'normal' ? ['due_at' => $data['due_at'] ?? null] : []));
+        if ($generated) {
+            $fields += ['alert_at' => $dates['alert_at'] ?? null, 'due_at' => $dates['due_at'] ?? null];
+        } elseif ($switchable) {
+            $fields += ['kind' => $kind, 'due_at' => $kind === 'normal' ? ($data['due_at'] ?? null) : null];
+        }
+        $task->update($fields);
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
     }

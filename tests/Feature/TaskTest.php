@@ -214,4 +214,27 @@ class TaskTest extends TestCase
         TaskSchedule::generateDue(true);
         $this->assertSame(1, Task::where('is_template', false)->count());
     }
+
+    public function test_editing_a_task_follows_its_kind(): void
+    {
+        $manager = $this->manager();
+        $member = User::factory()->create();
+
+        // A normal task becomes urgent (its deadline goes), and back; never an appointment
+        $id = $this->as($manager)->postJson('/api/tasks/create', $this->task(['assignee_id' => $member->id, 'due_at' => '2026-12-01 12:00']))->json('data.id');
+        $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $id, 'kind' => 'scheduled', 'assignee_id' => $member->id]))->assertStatus(422);
+        $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $id, 'kind' => 'urgent', 'assignee_id' => $member->id]))
+            ->assertOk()->assertJsonPath('data.kind', 'urgent')->assertJsonPath('data.due_at', null);
+        $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $id, 'kind' => 'normal', 'assignee_id' => $member->id, 'due_at' => '2026-12-02 12:00']))
+            ->assertOk()->assertJsonPath('data.kind', 'normal')->assertJsonPath('data.due_at', '2026-12-02 12:00');
+
+        // An appointment's task stays one: its own alert and deadline change (the deadline after the alert)
+        $task = Task::create(['title' => 'تحضير الملعب', 'kind' => 'scheduled', 'nature' => 'internal', 'assignee_id' => $member->id, 'created_by' => $manager->id,
+            'alert_at' => '2026-12-05 08:00', 'due_at' => '2026-12-05 18:00', 'status' => 'new']);
+        $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $task->id, 'kind' => 'normal', 'assignee_id' => $member->id]))->assertStatus(422);
+        $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $task->id, 'kind' => 'scheduled', 'assignee_id' => $member->id, 'alert_at' => '2026-12-05 10:00', 'due_at' => '2026-12-05 09:00']))
+            ->assertStatus(422)->assertJsonValidationErrors('due_at');
+        $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $task->id, 'kind' => 'scheduled', 'assignee_id' => $member->id, 'alert_at' => '2026-12-04 08:00', 'due_at' => '2026-12-06 12:00']))
+            ->assertOk()->assertJsonPath('data.alert_at', '2026-12-04 08:00')->assertJsonPath('data.due_at', '2026-12-06 12:00')->assertJsonPath('data.kind', 'scheduled');
+    }
 }
