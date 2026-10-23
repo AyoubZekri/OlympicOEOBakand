@@ -257,6 +257,8 @@ class TaskTest extends TestCase
             [$tasks['مباراة ضد النجم']['kind'], $tasks['مباراة ضد النجم']['nature'], $tasks['مباراة ضد النجم']['source'],
                 $tasks['مباراة ضد النجم']['alert_at'], $tasks['مباراة ضد النجم']['due_at'], $tasks['مباراة ضد النجم']['status'], $tasks['مباراة ضد النجم']['assignee']]);
         $this->assertSame('2026-11-08 20:00', $tasks['تنقل إلى وهران']['alert_at']);
+        // Each one knows its event, to open it
+        $this->assertSame(['type' => 'match', 'id' => $match->id], $tasks['مباراة ضد النجم']['event']);
         $this->assertSame('internal', $tasks['اجتماع: الميزانية']['nature']);
 
         // Tomorrow's birthday: its task, from today (the day before) to the day's end; a far one not yet
@@ -266,6 +268,7 @@ class TaskTest extends TestCase
         $this->assertSame(['call', '2026-10-22 00:00', '2026-10-23 23:59'],
             [$tasks['عيد ميلاد مدرب أول']['nature'], $tasks['عيد ميلاد مدرب أول']['alert_at'], $tasks['عيد ميلاد مدرب أول']['due_at']]);
         $this->assertFalse($tasks->has('عيد ميلاد لاعب بعيد'));
+        $this->assertSame(['type' => 'birthday', 'id' => $coach->id], $tasks['عيد ميلاد مدرب أول']['event']);
 
         // Checked again: no second task; the match moved: its task follows; deleted: cancelled
         TaskSchedule::generateDue(true);

@@ -354,6 +354,8 @@ class TaskController extends Controller
             'source' => $t->template?->schedule === 'event' ? $t->template->event_type
                 : ($t->template?->schedule === 'periodic' ? 'periodic' : ($t->source_ref ? strtok($t->source_ref, ':') : null)),
             'template_id' => $t->template_id,
+            // The event it was created for, to open it: a match / training session / meeting / trip, or the member (a birthday)
+            'event' => $this->eventOf($t->source_ref),
             'assignee' => $t->assignee ? ['id' => $t->assignee->id, 'name' => $t->assignee->name] : null,
             'created_by' => $t->creator?->name,
             'seen' => $t->assignee_seen_at !== null,
@@ -367,6 +369,14 @@ class TaskController extends Controller
             'done_at' => $this->local($t->done_at),
             'created_at' => $this->local($t->created_at),
         ];
+    }
+
+    /** «match:5» → match 5; «birthday:12:2026» → the member 12; a periodic day → none */
+    private function eventOf(?string $ref): ?array
+    {
+        $parts = explode(':', (string) $ref);
+
+        return in_array($parts[0], Task::EVENTS, true) && ctype_digit($parts[1] ?? '') ? ['type' => $parts[0], 'id' => (int) $parts[1]] : null;
     }
 
     private function presentTemplate(Task $t): array
