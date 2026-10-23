@@ -80,10 +80,10 @@ class TaskTest extends TestCase
         // Someone else cannot read it
         $this->as(User::factory()->create())->getJson('/api/tasks/messages?id=' . $id)->assertForbidden();
 
-        // The management changes the status: no reason asked; a note, if any, is written in the conversation (unread for the member)
+        // The management changes the status: no reason asked; written in the conversation's record, not counted as unread
         $this->travel(1)->minutes();
         $this->as($manager)->postJson('/api/tasks/status', ['id' => $id, 'status' => 'on_hold', 'note' => 'ننتظر الختم'])->assertOk()->assertJsonPath('data.status', 'on_hold');
-        $this->as($member)->getJson('/api/tasks/mine')->assertJsonPath('data.0.unread', 1)->assertJsonPath('data.0.last_message.status', 'on_hold');
+        $this->as($member)->getJson('/api/tasks/mine')->assertJsonPath('data.0.unread', 0)->assertJsonPath('data.0.last_message.status', 'on_hold');
 
         // The deadline passes: overdue (not a status), until it is done
         $this->travel(3)->hours();
@@ -153,12 +153,12 @@ class TaskTest extends TestCase
             ->assertJsonPath('data.0.event_label', 'عيد ميلاد ياسين كريم · 2026/10/23')
             ->assertJsonPath('data.0.alert_at', '2026-10-22 00:00')->assertJsonPath('data.0.due_at', '2026-10-23 12:00');
 
-        // Checked again: still one; on 14 December, the second one
+        // Checked again: still one; on 14 December, the second one (the appointment's, besides the automatic ones)
         TaskSchedule::generateDue(true);
-        $this->assertSame(1, Task::where('is_template', false)->count());
+        $this->assertSame(1, Task::where('is_template', false)->whereNotNull('template_id')->count());
         $this->travelTo(\Illuminate\Support\Carbon::parse('2026-12-14 08:00', 'Africa/Algiers')->utc());
         TaskSchedule::generateDue(true);
-        $this->assertSame(2, Task::where('is_template', false)->count());
+        $this->assertSame(2, Task::where('is_template', false)->whereNotNull('template_id')->count());
     }
 
     public function test_a_periodic_appointment_creates_its_task_on_its_day(): void
@@ -236,5 +236,43 @@ class TaskTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('due_at');
         $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $task->id, 'kind' => 'scheduled', 'assignee_id' => $member->id, 'alert_at' => '2026-12-04 08:00', 'due_at' => '2026-12-06 12:00']))
             ->assertOk()->assertJsonPath('data.alert_at', '2026-12-04 08:00')->assertJsonPath('data.due_at', '2026-12-06 12:00')->assertJsonPath('data.kind', 'scheduled');
+    }
+
+    public function test_events_and_birthdays_create_their_own_appointment_task(): void
+    {
+        $manager = $this->manager();
+        // Thursday 2026-10-22, 09:00 in Algeria
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-22 09:00', 'Africa/Algiers')->utc());
+        $auto = fn () => collect($this->as($manager)->getJson('/api/tasks')->json('data'))->whereNull('template_id')->keyBy('title');
+
+        // A new match: its task at once — an appointment, outside, alert a day before, deadline the match
+        $coach = \App\Models\Individual::create(['type' => 'staff', 'first_name' => 'مدرب', 'last_name' => 'أول', 'birth_date' => '1990-10-23']);
+        $match = Matchs::create(['competition' => 'البطولة', 'opponent' => 'النجم', 'match_date' => '2026-11-10 15:00', 'location' => 'الملعب',
+            'coach_id' => $coach->id, 'admin_id' => $manager->id, 'team_id' => Team::create(['name' => 'أكابر'])->id]);
+        \App\Models\TravelItinerary::create(['destination' => 'وهران', 'departure_time' => '2026-11-09 20:00']);
+        \App\Models\Meeting::create(['topic' => 'الميزانية', 'date' => '2026-11-02', 'time' => '10:00', 'location' => 'المقر']);
+
+        $tasks = $auto();
+        $this->assertSame(['scheduled', 'external', 'match', '2026-11-09 15:00', '2026-11-10 15:00', 'new', null],
+            [$tasks['مباراة ضد النجم']['kind'], $tasks['مباراة ضد النجم']['nature'], $tasks['مباراة ضد النجم']['source'],
+                $tasks['مباراة ضد النجم']['alert_at'], $tasks['مباراة ضد النجم']['due_at'], $tasks['مباراة ضد النجم']['status'], $tasks['مباراة ضد النجم']['assignee']]);
+        $this->assertSame('2026-11-08 20:00', $tasks['تنقل إلى وهران']['alert_at']);
+        $this->assertSame('internal', $tasks['اجتماع: الميزانية']['nature']);
+
+        // Tomorrow's birthday: its task, from today (the day before) to the day's end; a far one not yet
+        \App\Models\Individual::create(['type' => 'player', 'first_name' => 'لاعب', 'last_name' => 'بعيد', 'birth_date' => '2005-12-30']);
+        TaskSchedule::generateDue(true);
+        $tasks = $auto();
+        $this->assertSame(['call', '2026-10-22 00:00', '2026-10-23 23:59'],
+            [$tasks['عيد ميلاد مدرب أول']['nature'], $tasks['عيد ميلاد مدرب أول']['alert_at'], $tasks['عيد ميلاد مدرب أول']['due_at']]);
+        $this->assertFalse($tasks->has('عيد ميلاد لاعب بعيد'));
+
+        // Checked again: no second task; the match moved: its task follows; deleted: cancelled
+        TaskSchedule::generateDue(true);
+        $this->assertSame(4, $auto()->count());
+        $match->update(['match_date' => '2026-11-12 18:00']);
+        $this->assertSame('2026-11-11 18:00', $auto()['مباراة ضد النجم']['alert_at']);
+        $match->delete();
+        $this->assertSame('cancelled', $auto()['مباراة ضد النجم']['status']);
     }
 }

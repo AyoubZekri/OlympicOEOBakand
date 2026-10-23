@@ -26,7 +26,9 @@ class TaskController extends Controller
         TaskSchedule::generateDue();
         $tasks = $this->tasks()
             ->where('assignee_id', $request->user()->id)
+            // Unread: the messages only (a status change is not shown in the conversation)
             ->withCount(['messages as unread' => fn ($q) => $q
+                ->whereNull('task_messages.status')
                 ->where(fn ($q) => $q->whereNull('task_messages.user_id')->orWhereColumn('task_messages.user_id', '!=', 'tasks.assignee_id'))
                 ->where(fn ($q) => $q->whereNull('tasks.assignee_read_at')->orWhereColumn('task_messages.created_at', '>', 'tasks.assignee_read_at'))])
             ->get();
@@ -42,6 +44,7 @@ class TaskController extends Controller
         TaskSchedule::generateDue();
         $tasks = $this->tasks()
             ->withCount(['messages as unread' => fn ($q) => $q
+                ->whereNull('task_messages.status')
                 ->whereColumn('task_messages.user_id', 'tasks.assignee_id')
                 ->where(fn ($q) => $q->whereNull('tasks.managers_read_at')->orWhereColumn('task_messages.created_at', '>', 'tasks.managers_read_at'))])
             ->get();
