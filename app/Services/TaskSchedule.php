@@ -85,7 +85,8 @@ class TaskSchedule
     }
 
     /**
-     * The periodic appointments' tasks that are due (today's, and the days missed in the last month).
+     * The periodic appointments' tasks that are due (today's, and the days missed in the last month). An alert before
+     * its day (a negative offset from the day's start): the task is created those days ahead, so it shows at its alert.
      * Asked by the tasks' lists: at most once a minute, unless forced.
      */
     public static function generateDue(bool $force = false): void
@@ -102,13 +103,14 @@ class TaskSchedule
                     $from = $from->max($template->last_run_on->copy()->addDay());
                 }
                 $from = $from->max($today->copy()->subDays(31));
+                $until = $today->copy()->addDays((int) ceil(max(0, -(int) $template->alert_offset) / 1440));
 
-                for ($day = $from->copy(); $day->lte($today); $day->addDay()) {
+                for ($day = $from->copy(); $day->lte($until); $day->addDay()) {
                     if (self::isRepeatDay($template, $day)) {
                         self::spawn($template, 'day:' . $day->toDateString(), $day->copy(), $day->format('Y/m/d'));
                     }
                 }
-                $template->update(['last_run_on' => $today->toDateString()]);
+                $template->update(['last_run_on' => $until->toDateString()]);
             });
 
         self::generateBirthdays($today);

@@ -80,9 +80,8 @@ class TaskTest extends TestCase
         // Someone else cannot read it
         $this->as(User::factory()->create())->getJson('/api/tasks/messages?id=' . $id)->assertForbidden();
 
-        // The management changes the status: a reason for "on hold", written in the conversation (unread for the member)
+        // The management changes the status: no reason asked; a note, if any, is written in the conversation (unread for the member)
         $this->travel(1)->minutes();
-        $this->as($manager)->postJson('/api/tasks/status', ['id' => $id, 'status' => 'on_hold'])->assertStatus(422);
         $this->as($manager)->postJson('/api/tasks/status', ['id' => $id, 'status' => 'on_hold', 'note' => 'ننتظر الختم'])->assertOk()->assertJsonPath('data.status', 'on_hold');
         $this->as($member)->getJson('/api/tasks/mine')->assertJsonPath('data.0.unread', 1)->assertJsonPath('data.0.last_message.status', 'on_hold');
 
@@ -190,5 +189,29 @@ class TaskTest extends TestCase
             'schedule' => 'periodic', 'repeat' => 'monthly', 'repeat_day' => 31, 'alert_offset' => 0, 'due_offset' => 1440, 'status' => 'active']);
         $this->assertTrue(TaskSchedule::isRepeatDay($template, \Illuminate\Support\Carbon::parse('2026-11-30')));
         $this->assertFalse(TaskSchedule::isRepeatDay($template, \Illuminate\Support\Carbon::parse('2026-10-30')));
+    }
+
+    public function test_a_periodic_alert_before_its_day_creates_the_task_ahead(): void
+    {
+        $manager = $this->manager();
+        $member = User::factory()->create();
+        // Thursday 2026-10-22, 09:00 in Algeria
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-22 09:00', 'Africa/Algiers')->utc());
+
+        // Every Saturday: alert the day before at 20:00 (-4 hours), deadline on the day at 12:00
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'scheduled', 'assignee_id' => $member->id, 'schedule' => 'periodic', 'repeat' => 'weekly', 'repeat_day' => 6, 'alert_offset' => -240, 'due_offset' => 720]))
+            ->assertCreated();
+        $this->assertSame(0, Task::where('is_template', false)->count());
+
+        // Friday: Saturday's task is there, with its alert that evening
+        $this->travel(1)->days();
+        TaskSchedule::generateDue(true);
+        $this->as($member)->getJson('/api/tasks/mine')->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.alert_at', '2026-10-23 20:00')->assertJsonPath('data.0.due_at', '2026-10-24 12:00');
+
+        // Saturday: still the one task
+        $this->travel(1)->days();
+        TaskSchedule::generateDue(true);
+        $this->assertSame(1, Task::where('is_template', false)->count());
     }
 }

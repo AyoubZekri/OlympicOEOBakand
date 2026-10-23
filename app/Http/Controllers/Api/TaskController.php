@@ -281,10 +281,6 @@ class TaskController extends Controller
             if ($data['repeat'] === 'weekly' && $data['repeat_day'] > 7) {
                 abort(response()->json(['message' => 'اختر يوماً من الأسبوع', 'errors' => ['repeat_day' => ['اختر يوماً من الأسبوع']]], 422));
             }
-            // From the day's start: the alert on that day
-            if ($data['alert_offset'] < 0) {
-                abort(response()->json(['message' => 'التنبيه يكون في يوم المهمة أو بعده', 'errors' => ['alert_offset' => ['التنبيه يكون في يوم المهمة أو بعده']]], 422));
-            }
         }
 
         return $data;
