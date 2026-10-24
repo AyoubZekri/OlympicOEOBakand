@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Individual;
 use App\Models\PlayerEvaluation;
+use App\Services\RolePermissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -161,6 +163,73 @@ class PlayerEvaluationController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
         }
+    }
+
+    /** Each criterion's maximum mark (as in the evaluation form) */
+    private const MAX = [
+        'scoreDiscipline' => 10, 'scoreFitness' => 15, 'scoreTechnical' => 20, 'scoreTactical' => 15,
+        'scoreMatchPerformance' => 20, 'scoreInstructions' => 10, 'scoreBehavior' => 10,
+    ];
+
+    /**
+     * A group evaluation (from the Excel sheet): one season, type and period for every row, each row a player's marks.
+     * Only who may evaluate; only the active players; every mark within its maximum. All saved, or none.
+     */
+    public function bulk(Request $request)
+    {
+        abort_unless(RolePermissions::can($request->user(), 'members', 'evaluate'), 403, 'ليست لديك صلاحية');
+        $rules = [
+            'season' => 'nullable|string|max:20',
+            'evaluationType' => 'required|string|max:50',
+            'periodStart' => 'nullable|date',
+            'periodEnd' => 'nullable|date|after_or_equal:periodStart',
+            'items' => 'required|array|min:1|max:500',
+            'items.*.playerId' => 'required|integer|distinct',
+            'items.*.strengths' => 'nullable|string|max:2000',
+            'items.*.weaknesses' => 'nullable|string|max:2000',
+            'items.*.recommendation' => 'nullable|string|max:100',
+        ];
+        foreach (self::MAX as $key => $max) {
+            $rules["items.*.{$key}"] = "required|integer|min:0|max:{$max}";
+        }
+        $data = $request->validate($rules, [
+            'items.required' => 'لا توجد تقييمات للحفظ',
+            'items.*.playerId.distinct' => 'لاعب مكرر في الملف',
+        ]);
+
+        // Only the active players
+        $ids = array_column($data['items'], 'playerId');
+        $players = Individual::whereIn('id', $ids)->where('type', 'player')->where('status', 'active')->pluck('id')->all();
+        $wrong = array_values(array_diff($ids, $players));
+        if ($wrong) {
+            return response()->json(['message' => 'بعض الصفوف ليست للاعبين نشطين', 'errors' => ['items' => ['ليس لاعباً نشطاً: ' . implode('، ', $wrong)]]], 422);
+        }
+
+        DB::transaction(function () use ($data, $request) {
+            foreach ($data['items'] as $item) {
+                PlayerEvaluation::create([
+                    'player_id' => $item['playerId'],
+                    'coach_id' => null,
+                    'season' => $data['season'] ?? null,
+                    'evaluation_type' => $data['evaluationType'],
+                    'period_start' => $data['periodStart'] ?? null,
+                    'period_end' => $data['periodEnd'] ?? null,
+                    'score_discipline' => $item['scoreDiscipline'],
+                    'score_fitness' => $item['scoreFitness'],
+                    'score_technical' => $item['scoreTechnical'],
+                    'score_tactical' => $item['scoreTactical'],
+                    'score_match_performance' => $item['scoreMatchPerformance'],
+                    'score_instructions' => $item['scoreInstructions'],
+                    'score_behavior' => $item['scoreBehavior'],
+                    'total_score' => array_sum(array_map(fn ($k) => $item[$k], array_keys(self::MAX))),
+                    'strengths' => $item['strengths'] ?? null,
+                    'weaknesses' => $item['weaknesses'] ?? null,
+                    'recommendation' => $item['recommendation'] ?? null,
+                ]);
+            }
+        });
+
+        return response()->json(['message' => 'تم حفظ ' . count($data['items']) . ' تقييم', 'count' => count($data['items'])], 201);
     }
 
     public function destroy(Request $request)

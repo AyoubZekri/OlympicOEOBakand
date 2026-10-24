@@ -291,6 +291,7 @@ class TaskTest extends TestCase
         // A role saved before (tasks only): the new actions follow the old ones
         $old = $this->manager(['view' => true, 'add' => true, 'edit' => false, 'delete' => false]);
         $this->as($old)->getJson('/api/tasks/templates')->assertOk();
+        $this->as($old)->getJson('/api/tasks/upcoming')->assertOk();
         $this->as($old)->postJson('/api/tasks/create', $this->task(['kind' => 'voice', 'assignee_id' => $member->id]))->assertCreated();
         $id = $this->as($old)->postJson('/api/tasks/create', $this->task(['assignee_id' => $member->id]))->assertCreated()->json('data.id');
         $this->as($old)->postJson('/api/tasks/status', ['id' => $id, 'status' => 'done'])->assertForbidden();
@@ -312,10 +313,11 @@ class TaskTest extends TestCase
         // The appointments only: add, stop / start, not delete; not the home page
         $role = Role::create(['name' => 'المواعيد', 'type' => 'partial', 'permissions' => json_encode([
             'tasks' => ['view' => false],
-            'appointments' => ['view' => true, 'add' => true, 'edit' => false, 'toggle' => true, 'delete' => false],
+            'appointments' => ['view' => true, 'viewUpcoming' => false, 'add' => true, 'edit' => false, 'toggle' => true, 'delete' => false],
         ])]);
         $appointments = User::factory()->create(['role_id' => $role->id]);
         $this->as($appointments)->getJson('/api/tasks')->assertForbidden();
+        $this->as($appointments)->getJson('/api/tasks/upcoming')->assertForbidden();
         $template = $this->as($appointments)->postJson('/api/tasks/create', $this->task($appointment))->assertCreated()->json('data.id');
         $this->as($appointments)->postJson('/api/tasks/templates/toggle', ['id' => $template])->assertOk();
         $this->as($appointments)->postJson('/api/tasks/delete', ['id' => $template])->assertForbidden();

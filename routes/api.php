@@ -191,6 +191,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Player Evaluations Routes
     Route::get('/player-evaluations', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'index']);
     Route::post('/player-evaluations/create', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'store']);
+    // A group evaluation, from the Excel sheet of the active players
+    Route::post('/player-evaluations/bulk', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'bulk']);
     Route::post('/player-evaluations/update', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'update']);
     Route::post('/player-evaluations/delete', [\App\Http\Controllers\Api\PlayerEvaluationController::class, 'destroy']);
 

@@ -20,6 +20,7 @@ class RolePermissions
         'tasks.changeStatus' => ['tasks', 'edit'],
         'tasks.chat' => ['tasks', 'view'],
         'appointments.view' => ['tasks', 'view'],
+        'appointments.viewUpcoming' => ['appointments', 'view'],
         'appointments.add' => ['tasks', 'add'],
         'appointments.edit' => ['tasks', 'edit'],
         'appointments.toggle' => ['tasks', 'edit'],
@@ -43,8 +44,10 @@ class RolePermissions
         }
         $value = $permissions[$module][$action] ?? null;
         if ($value === null && isset(self::FALLBACK["{$module}.{$action}"])) {
+            // What it follows (which may itself follow another)
             [$from, $fromAction] = self::FALLBACK["{$module}.{$action}"];
-            $value = $permissions[$from][$fromAction] ?? false;
+
+            return self::can($user, $from, $fromAction);
         }
 
         return $value === true;

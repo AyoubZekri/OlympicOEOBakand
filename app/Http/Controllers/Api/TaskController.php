@@ -53,13 +53,12 @@ class TaskController extends Controller
     }
 
     /**
-     * The appointments' tasks not on the home page yet: open, their alert still to come (soonest first). For who sees
-     * the home page or the appointments.
+     * The appointments' tasks not on the home page yet: open, their alert still to come (soonest first). For who has the
+     * appointments' «عرض المهام القادمة».
      */
     public function upcoming(Request $request)
     {
-        $user = $request->user();
-        abort_unless(RolePermissions::can($user, 'tasks', 'view') || RolePermissions::can($user, 'appointments', 'view'), 403, 'ليست لديك صلاحية');
+        $this->allow($request, 'viewUpcoming', 'appointments');
         TaskSchedule::generateDue();
         $tasks = $this->tasks()->reorder()
             ->where('kind', 'scheduled')
