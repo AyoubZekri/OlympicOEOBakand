@@ -52,10 +52,29 @@ class TaskController extends Controller
         return response()->json(['data' => $tasks->map(fn ($t) => $this->present($t))]);
     }
 
+    /**
+     * The appointments' tasks not on the home page yet: open, their alert still to come (soonest first). For who sees
+     * the home page or the appointments.
+     */
+    public function upcoming(Request $request)
+    {
+        $user = $request->user();
+        abort_unless(RolePermissions::can($user, 'tasks', 'view') || RolePermissions::can($user, 'appointments', 'view'), 403, 'ليست لديك صلاحية');
+        TaskSchedule::generateDue();
+        $tasks = $this->tasks()->reorder()
+            ->where('kind', 'scheduled')
+            ->whereIn('status', ['new', 'in_progress', 'on_hold'])
+            ->where('alert_at', '>', TaskSchedule::localNow())
+            ->orderBy('alert_at')
+            ->get();
+
+        return response()->json(['data' => $tasks->map(fn ($t) => $this->present($t))]);
+    }
+
     /** The appointments (linked to an event, or periodic) */
     public function templates(Request $request)
     {
-        $this->allow($request, 'view');
+        $this->allow($request, 'view', 'appointments');
         $templates = Task::with(['assignee:id,name', 'creator:id,name'])
             ->withCount(['children as tasks_count'])
             ->where('is_template', true)
@@ -68,7 +87,9 @@ class TaskController extends Controller
     /** Who a task can be given to: the members with an account */
     public function users(Request $request)
     {
-        abort_unless(RolePermissions::can($request->user(), 'tasks', 'add') || RolePermissions::can($request->user(), 'tasks', 'edit'), 403, 'ليست لديك صلاحية');
+        $user = $request->user();
+        abort_unless(collect([['tasks', 'add'], ['tasks', 'voice'], ['tasks', 'edit'], ['appointments', 'add'], ['appointments', 'edit']])
+            ->contains(fn ($p) => RolePermissions::can($user, ...$p)), 403, 'ليست لديك صلاحية');
         $users = \App\Models\User::orderBy('name')->get(['id', 'name']);
 
         return response()->json(['data' => $users->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])]);
@@ -77,8 +98,10 @@ class TaskController extends Controller
     /** A normal or urgent task (given at once), or an appointment (scheduled) */
     public function store(Request $request)
     {
-        $this->allow($request, 'add');
-        $data = $this->validated($request, $request->input('kind') === 'scheduled');
+        $kind = $request->input('kind');
+        // An appointment: the appointments' «add»; a voice note: «voice»; a task: «add»
+        $this->allow($request, $kind === 'voice' ? 'voice' : 'add', $kind === 'scheduled' ? 'appointments' : 'tasks');
+        $data = $this->validated($request, $kind === 'scheduled');
 
         if ($data['kind'] === 'scheduled') {
             $task = Task::create($this->templateFields($data) + [
@@ -109,8 +132,8 @@ class TaskController extends Controller
      */
     public function update(Request $request)
     {
-        $this->allow($request, 'edit');
         $task = Task::findOrFail($request->validate(['id' => 'required|integer'])['id']);
+        $this->allow($request, 'edit', $task->is_template ? 'appointments' : 'tasks');
         $kind = (string) $request->input('kind');
         $switchable = !$task->is_template && in_array($task->kind, ['normal', 'urgent'], true);
         if ($switchable ? !in_array($kind, ['normal', 'urgent'], true) : $kind !== $task->kind) {
@@ -148,7 +171,7 @@ class TaskController extends Controller
     /** The management changes a task's status; the change (and its reason) is written in the conversation */
     public function status(Request $request)
     {
-        $this->allow($request, 'edit');
+        $this->allow($request, 'changeStatus');
         $data = $request->validate([
             'id' => 'required|integer',
             'status' => 'required|in:' . implode(',', Task::STATUSES),
@@ -170,7 +193,7 @@ class TaskController extends Controller
     /** An appointment stopped (creates no more tasks) or started again */
     public function toggle(Request $request)
     {
-        $this->allow($request, 'edit');
+        $this->allow($request, 'toggle', 'appointments');
         $template = Task::where('is_template', true)->findOrFail($request->validate(['id' => 'required|integer'])['id']);
         $resume = $template->status === 'paused';
         $template->update(['status' => $resume ? 'active' : 'paused']
@@ -186,8 +209,9 @@ class TaskController extends Controller
     /** A task, or an appointment (the tasks it created stay) */
     public function destroy(Request $request)
     {
-        $this->allow($request, 'delete');
-        Task::findOrFail($request->validate(['id' => 'required|integer'])['id'])->delete();
+        $task = Task::findOrFail($request->validate(['id' => 'required|integer'])['id']);
+        $this->allow($request, 'delete', $task->is_template ? 'appointments' : 'tasks');
+        $task->delete();
 
         return response()->json(['message' => 'تم الحذف']);
     }
@@ -253,7 +277,7 @@ class TaskController extends Controller
     private function reachable(Request $request): Task
     {
         $task = Task::where('is_template', false)->findOrFail($request->validate(['id' => 'required|integer'])['id']);
-        abort_unless($task->isAssignee($request->user()) || RolePermissions::can($request->user(), 'tasks', 'view'), 403, 'ليست لديك صلاحية');
+        abort_unless($task->isAssignee($request->user()) || RolePermissions::can($request->user(), 'tasks', 'chat'), 403, 'ليست لديك صلاحية');
 
         return $task;
     }
@@ -322,9 +346,10 @@ class TaskController extends Controller
         ];
     }
 
-    private function allow(Request $request, string $action): void
+    /** The home page's tasks (tasks.*) or the appointments page (appointments.*) */
+    private function allow(Request $request, string $action, string $module = 'tasks'): void
     {
-        abort_unless(RolePermissions::can($request->user(), 'tasks', $action), 403, 'ليست لديك صلاحية');
+        abort_unless(RolePermissions::can($request->user(), $module, $action), 403, 'ليست لديك صلاحية');
     }
 
     /** A timestamp in the club's time */

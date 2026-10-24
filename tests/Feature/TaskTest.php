@@ -270,6 +270,10 @@ class TaskTest extends TestCase
         $this->assertFalse($tasks->has('عيد ميلاد لاعب بعيد'));
         $this->assertSame(['type' => 'birthday', 'id' => $coach->id], $tasks['عيد ميلاد مدرب أول']['event']);
 
+        // Not on the home page yet (their alert still to come), soonest first; tomorrow's birthday is already there
+        $this->assertSame(['اجتماع: الميزانية', 'تنقل إلى وهران', 'مباراة ضد النجم'],
+            array_column($this->as($manager)->getJson('/api/tasks/upcoming')->assertOk()->json('data'), 'title'));
+
         // Checked again: no second task; the match moved: its task follows; deleted: cancelled
         TaskSchedule::generateDue(true);
         $this->assertSame(4, $auto()->count());
@@ -277,5 +281,44 @@ class TaskTest extends TestCase
         $this->assertSame('2026-11-11 18:00', $auto()['مباراة ضد النجم']['alert_at']);
         $match->delete();
         $this->assertSame('cancelled', $auto()['مباراة ضد النجم']['status']);
+    }
+
+    public function test_the_home_page_and_the_appointments_have_their_own_permissions(): void
+    {
+        $member = User::factory()->create();
+        $appointment = ['kind' => 'scheduled', 'assignee_id' => $member->id, 'schedule' => 'event', 'event_type' => 'match', 'alert_offset' => -1440, 'due_offset' => 0];
+
+        // A role saved before (tasks only): the new actions follow the old ones
+        $old = $this->manager(['view' => true, 'add' => true, 'edit' => false, 'delete' => false]);
+        $this->as($old)->getJson('/api/tasks/templates')->assertOk();
+        $this->as($old)->postJson('/api/tasks/create', $this->task(['kind' => 'voice', 'assignee_id' => $member->id]))->assertCreated();
+        $id = $this->as($old)->postJson('/api/tasks/create', $this->task(['assignee_id' => $member->id]))->assertCreated()->json('data.id');
+        $this->as($old)->postJson('/api/tasks/status', ['id' => $id, 'status' => 'done'])->assertForbidden();
+        $this->as($old)->getJson('/api/tasks/messages?id=' . $id)->assertOk();
+
+        // The home page only: no appointments, no voice notes, no conversation; the status yes
+        $role = Role::create(['name' => 'الرئيسية', 'type' => 'partial', 'permissions' => json_encode([
+            'tasks' => ['view' => true, 'add' => true, 'voice' => false, 'edit' => false, 'changeStatus' => true, 'chat' => false, 'delete' => false],
+            'appointments' => ['view' => false, 'add' => false, 'edit' => false, 'toggle' => false, 'delete' => false],
+        ])]);
+        $home = User::factory()->create(['role_id' => $role->id]);
+        $this->as($home)->getJson('/api/tasks')->assertOk();
+        $this->as($home)->getJson('/api/tasks/templates')->assertForbidden();
+        $this->as($home)->postJson('/api/tasks/create', $this->task($appointment))->assertForbidden();
+        $this->as($home)->postJson('/api/tasks/create', $this->task(['kind' => 'voice', 'assignee_id' => $member->id]))->assertForbidden();
+        $this->as($home)->postJson('/api/tasks/status', ['id' => $id, 'status' => 'in_progress'])->assertOk();
+        $this->as($home)->getJson('/api/tasks/messages?id=' . $id)->assertForbidden();
+
+        // The appointments only: add, stop / start, not delete; not the home page
+        $role = Role::create(['name' => 'المواعيد', 'type' => 'partial', 'permissions' => json_encode([
+            'tasks' => ['view' => false],
+            'appointments' => ['view' => true, 'add' => true, 'edit' => false, 'toggle' => true, 'delete' => false],
+        ])]);
+        $appointments = User::factory()->create(['role_id' => $role->id]);
+        $this->as($appointments)->getJson('/api/tasks')->assertForbidden();
+        $template = $this->as($appointments)->postJson('/api/tasks/create', $this->task($appointment))->assertCreated()->json('data.id');
+        $this->as($appointments)->postJson('/api/tasks/templates/toggle', ['id' => $template])->assertOk();
+        $this->as($appointments)->postJson('/api/tasks/delete', ['id' => $template])->assertForbidden();
+        $this->as($appointments)->postJson('/api/tasks/create', $this->task(['assignee_id' => $member->id]))->assertForbidden();
     }
 }
