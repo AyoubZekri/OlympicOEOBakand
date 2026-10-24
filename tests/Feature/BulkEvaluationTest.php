@@ -59,5 +59,9 @@ class BulkEvaluationTest extends TestCase
         $this->assertSame(2, PlayerEvaluation::count());
         $saved = PlayerEvaluation::where('player_id', $b->id)->first();
         $this->assertSame([76, 'شهري', '2026-2027'], [(int) $saved->total_score, $saved->evaluation_type, $saved->season]);
+
+        // Each player's history: its own evaluations only
+        $this->assertSame([(string) $b->id], array_column($this->as($coach)->getJson('/api/player-evaluations?member_id=' . $b->id)->assertOk()->json(), 'playerId'));
+        $this->assertCount(2, $this->as($coach)->getJson('/api/player-evaluations')->json());
     }
 }

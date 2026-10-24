@@ -11,9 +11,13 @@ use Illuminate\Support\Facades\DB;
 
 class PlayerEvaluationController extends Controller
 {
-    public function index()
+    /** The evaluations; ?member_id= (or ?player_id=): that player's only */
+    public function index(Request $request)
     {
-        $evaluations = PlayerEvaluation::with(['playerId', 'coachId', 'sportingDirectorId'])->orderBy('id', 'desc')->get();
+        $player = $request->query('member_id') ?? $request->query('player_id');
+        $evaluations = PlayerEvaluation::with(['playerId', 'coachId', 'sportingDirectorId'])
+            ->when($player !== null && $player !== '', fn ($q) => $q->where('player_id', (int) $player))
+            ->orderBy('id', 'desc')->get();
         
         $data = $evaluations->map(function ($evaluation) {
             return [
