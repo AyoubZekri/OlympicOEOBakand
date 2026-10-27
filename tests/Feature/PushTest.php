@@ -61,7 +61,7 @@ class PushTest extends TestCase
                 $pair[0]['message']['token'],
                 $pair[0]['message']['notification']['title'],
                 $pair[0]['message']['notification']['body'],
-                $pair[0]['message']['data']['task_id'] ?? null,
+                ((array) $pair[0]['message']['data'])['task_id'] ?? null,
             ])->values()->all();
     }
 

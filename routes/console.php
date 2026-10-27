@@ -18,11 +18,22 @@ Artisan::command('members:create-accounts', function () {
     $this->info("Created {$count} member account(s).");
 })->purpose('Create the user accounts of the members that have none');
 
-// The Android app's notifications: a test one to a user (by email or id), with Firebase's answer
-Artisan::command('push:test {user}', function (string $user) {
-    $found = \App\Models\User::where('email', $user)->orWhere('id', $user)->first();
+// The Android app's notifications: a test one to a user (by email or id), with Firebase's answer; with no user, the
+// accounts signed in on a phone (that have a token)
+Artisan::command('push:test {user?}', function (?string $user = null) {
+    $found = $user ? \App\Models\User::where('email', $user)->orWhere('id', $user)->first() : null;
     if (!$found) {
-        return $this->error('لا يوجد مستخدم بهذا البريد أو الرقم');
+        if ($user) {
+            $this->error('لا يوجد مستخدم بهذا البريد أو الرقم');
+        }
+        $phones = \App\Models\User::whereNotNull('fcm_token')->where('fcm_token', '!=', '')->get(['id', 'name', 'email']);
+        if ($phones->isEmpty()) {
+            return $this->warn('لا يوجد حساب داخل من تطبيق الأندرويد (لا token)');
+        }
+        $this->info('الحسابات الداخلة من الهاتف — جرب: php artisan push:test <الرقم>');
+        $this->table(['الرقم', 'الاسم', 'البريد'], $phones->map(fn ($u) => [$u->id, $u->name, $u->email])->all());
+
+        return;
     }
     $this->line(\App\Services\Push::test($found));
 })->purpose('Send a test notification to a user\'s phone');

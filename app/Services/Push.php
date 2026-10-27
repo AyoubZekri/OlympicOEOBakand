@@ -50,7 +50,9 @@ class Push
     {
         $key = self::credentials();
         if (!$key) {
-            return 'لا يوجد مفتاح Firebase صالح في: ' . config('services.fcm.credentials');
+            $path = (string) config('services.fcm.credentials');
+
+            return 'لا يوجد مفتاح Firebase صالح في: ' . $path . (is_file(base_path($path)) || is_file($path) ? ' (الملف موجود لكنه ليس مفتاح service account)' : ' (الملف غير موجود)');
         }
         $lines = ['مشروع المفتاح: ' . $key['project_id']];
         if (!$user->fcm_token) {
@@ -80,7 +82,8 @@ class Push
                 ['message' => [
                     'token' => $token,
                     'notification' => ['title' => $title, 'body' => $body],
-                    'data' => array_map('strval', $data),
+                    // An object even when empty («{}», not «[]»: FCM refuses a list)
+                    'data' => (object) array_map('strval', $data),
                     'android' => [
                         'priority' => 'high',
                         'notification' => ['channel_id' => 'tasks', 'sound' => 'default', 'color' => '#F97316', 'icon' => 'ic_stat_notify'],
@@ -107,6 +110,10 @@ class Push
     private static function credentials(): ?array
     {
         $path = config('services.fcm.credentials');
+        // A relative path (FIREBASE_CREDENTIALS=config/serviceAccount.json): from the project's folder, not public/
+        if ($path && !preg_match('#^([a-zA-Z]:)?[\\\\/]#', $path)) {
+            $path = base_path($path);
+        }
         if (!$path || !is_file($path)) {
             return null;
         }
