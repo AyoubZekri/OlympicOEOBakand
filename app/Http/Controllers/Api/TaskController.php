@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\TaskMessage;
+use App\Services\ChatVersion;
 use App\Services\Push;
 use App\Services\RolePermissions;
 use App\Services\TaskSchedule;
@@ -223,6 +224,7 @@ class TaskController extends Controller
 
         $task->update(['status' => $data['status'], 'done_at' => $data['status'] === 'done' ? now() : null, 'managers_read_at' => now()]);
         TaskMessage::create(['task_id' => $task->id, 'user_id' => $request->user()->id, 'status' => $data['status'], 'body' => $data['note'] ?? null]);
+        ChatVersion::bump($task->id);
         Push::send($task->assignee_id, 'تغيّرت حالة المهمة', '«' . $task->title . '»: ' . (self::STATUS_WORDS[$data['status']] ?? $data['status']), ['task_id' => $task->id], $request->user()->id);
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
@@ -278,15 +280,22 @@ class TaskController extends Controller
 
     // ── The conversation (the member and the management) ──
 
-    /** A task's conversation; opening it marks it read for whoever opens it */
+    /**
+     * A task's conversation; opening it marks it read for whoever opens it. after: only the messages after that one
+     * (an open chat fetching what is new). seen_ts: when the other side last read it (the ✓✓ of my messages).
+     */
     public function messages(Request $request)
     {
         $task = $this->reachable($request);
+        $after = (int) $request->query('after', 0);
         $this->markRead($request, $task);
-        $messages = $task->messages()->with('user:id,name')->oldest('id')->get();
+        $messages = $task->messages()->with('user:id,name')->when($after > 0, fn ($q) => $q->where('id', '>', $after))->oldest('id')->get();
+        $other = $task->isAssignee($request->user()) ? $task->managers_read_at : $task->assignee_read_at;
 
         return response()->json([
             'task' => $this->present($this->tasks()->find($task->id)),
+            'version' => ChatVersion::current($task->id),
+            'seen_ts' => $other?->getTimestampMs(),
             'data' => $messages->map(fn ($m) => [
                 'id' => $m->id,
                 'body' => $m->body,
@@ -295,6 +304,7 @@ class TaskController extends Controller
                 'mine' => (int) $m->user_id === (int) $request->user()->id,
                 'from_assignee' => $m->user_id !== null && (int) $m->user_id === (int) $task->assignee_id,
                 'at' => $this->local($m->created_at),
+                'ts' => $m->created_at?->getTimestampMs(),
             ]),
         ]);
     }
@@ -305,9 +315,11 @@ class TaskController extends Controller
         $data = $request->validate(['body' => 'required|string|max:3000'], ['body.required' => 'اكتب الرسالة']);
         $message = TaskMessage::create(['task_id' => $task->id, 'user_id' => $request->user()->id, 'body' => $data['body']]);
         $this->markRead($request, $task);
-        // Everyone in the conversation (its member, who gave it, who wrote in it), but who wrote this
+        ChatVersion::bump($task->id);
+        // Everyone in the conversation (its member, who gave it, who wrote in it), but who wrote this and who has it open
         Push::send(
-            collect([$task->assignee_id, $task->created_by])->merge($task->messages()->whereNotNull('user_id')->distinct()->pluck('user_id')),
+            collect([$task->assignee_id, $task->created_by])->merge($task->messages()->whereNotNull('user_id')->distinct()->pluck('user_id'))
+                ->filter(fn ($id) => $id && !ChatVersion::isViewing($task->id, (int) $id)),
             'رسالة من ' . $request->user()->name,
             $data['body'],
             ['task_id' => $task->id],
@@ -317,6 +329,7 @@ class TaskController extends Controller
         return response()->json(['data' => [
             'id' => $message->id, 'body' => $message->body, 'status' => null, 'by' => $request->user()->name, 'mine' => true,
             'from_assignee' => $task->isAssignee($request->user()), 'at' => $this->local($message->created_at),
+            'ts' => $message->created_at?->getTimestampMs(),
         ]], 201);
     }
 
@@ -340,11 +353,33 @@ class TaskController extends Controller
 
     private function markRead(Request $request, Task $task): void
     {
-        if ($task->isAssignee($request->user())) {
+        $assignee = $task->isAssignee($request->user());
+        $since = $assignee ? $task->assignee_read_at : $task->managers_read_at;
+        // The other side's messages not read yet: once read, their writer sees ✓✓ (the chat moves)
+        $fresh = $task->messages()->whereNotNull('user_id')->where('user_id', '!=', $request->user()->id)
+            ->when($since, fn ($q) => $q->where('created_at', '>', $since))->exists();
+        if ($assignee) {
             $task->update(['assignee_read_at' => now(), 'assignee_seen_at' => $task->assignee_seen_at ?? now()]);
         } else {
             $task->update(['managers_read_at' => now()]);
         }
+        if ($fresh) {
+            ChatVersion::bump($task->id);
+        }
+    }
+
+    /**
+     * An open chat asks whether it moved: a number from a file (no login, no database). me: who has it open, so
+     * they are not notified of its messages while they look at it (it only spares a notification)
+     */
+    public function chatVersion(Request $request)
+    {
+        $id = (int) $request->query('id');
+        if ($me = (int) $request->query('me')) {
+            ChatVersion::viewing($id, $me);
+        }
+
+        return response()->json(['version' => ChatVersion::current($id)]);
     }
 
     /** $scheduled: an appointment's fields; $noDeadline: a task with no deadline of its own (an appointment's, urgent, voice) */

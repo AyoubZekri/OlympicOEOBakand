@@ -16,6 +16,8 @@ Route::post('/login', [AuthController::class, 'login']);
 
 // "Has anything changed?" for the alerts: one number read from a file, no login check (nothing private in it)
 Route::get('/alerts/version', [\App\Http\Controllers\Api\AlertsController::class, 'version']);
+// The same for one task's conversation (an open chat asks every few seconds)
+Route::get('/tasks/chat-version', [\App\Http\Controllers\Api\TaskController::class, 'chatVersion']);
 
 Route::middleware('auth:sanctum')->group(function () {
 
