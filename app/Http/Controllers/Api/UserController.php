@@ -11,7 +11,8 @@ class UserController extends Controller
 {
     public function index()
     {
-        return response()->json(User::all());
+        // The member linked to each account (its type, and its photo for the account's picture)
+        return response()->json(User::with('individual:id,user_id,type,photo')->get());
     }
 
     public function store(Request $request)
