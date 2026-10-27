@@ -19,11 +19,9 @@ class BumpAlertsVersion
 
         if (!$request->isMethodSafe() && $response->getStatusCode() < 400) {
             AlertsVersion::bump();
-            // What it caused (an absence logged, a status changed, a reply…) reaches the phones during the save,
+            // What it caused (an absence logged, a status changed, a reply…) reaches the phones right after it,
             // not at the next cron
-            if (!$request->is('api/me/push-token')) {
-                AlertPusher::afterSave();
-            }
+            AlertPusher::afterSave($request);
         }
         AlertsVersion::reset();
 

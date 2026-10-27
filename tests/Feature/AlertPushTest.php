@@ -88,10 +88,26 @@ class AlertPushTest extends TestCase
         AlertPusher::run();
         $this->assertCount(0, $this->sent());
 
-        // Saved (its status changed back to open, a new deadline passed): the member's phone at once
+        // A save in the tasks (another task's status): the tasks' alerts are looked at again, the member's phone at once
         Task::whereKey($task->id)->update(['due_at' => TaskSchedule::localNow()->subMinutes(5)]);
-        $this->actingAs($manager)->postJson('/api/tasks/messages/send', ['id' => $task->id, 'body' => 'أين وصلت؟']);
+        $other = $this->lateTask(User::factory()->create(), 'أخرى');
+        $this->actingAs($manager)->postJson('/api/tasks/status', ['id' => $other->id, 'status' => 'done'])->assertOk();
         $this->assertContains(['member-phone', 'تأخرت مهمة', "/?task={$task->id}"], $this->sent());
+    }
+
+    public function test_a_chat_message_does_not_run_the_alerts(): void
+    {
+        $this->withoutDefer();
+        $role = Role::create(['name' => 'مسير', 'type' => 'partial', 'permissions' => json_encode(['tasks' => ['view' => true, 'chat' => true]])]);
+        $manager = User::factory()->create(['role_id' => $role->id]);
+        $member = User::factory()->create(['fcm_token' => 'member-phone']);
+        $task = $this->lateTask($member, 'تحضير الملعب');
+        AlertPusher::run();
+        Task::whereKey($task->id)->update(['due_at' => TaskSchedule::localNow()->subMinutes(5)]);
+
+        // Its own notification only (the message), not the alerts' run: the late task waits for the cron
+        $this->actingAs($manager)->postJson('/api/tasks/messages/send', ['id' => $task->id, 'body' => 'أين وصلت؟'])->assertCreated();
+        $this->assertNotContains(['member-phone', 'تأخرت مهمة', "/?task={$task->id}"], $this->sent());
     }
 
     public function test_an_absence_logged_on_a_member_reaches_their_phone_at_once(): void

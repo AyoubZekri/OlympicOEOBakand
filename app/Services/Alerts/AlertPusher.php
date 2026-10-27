@@ -22,33 +22,52 @@ class AlertPusher
     /** At most this many notifications per user per run (the others in one) */
     private const PER_RUN = 4;
 
+    /** What a save touched (its API path's first part) → the alerts' sections to look at again */
+    private const SECTIONS = [
+        'absences' => ['absences'],
+        'disciplinary' => ['disciplinary'],
+        'tasks' => ['tasks'],
+        'feedback' => ['feedback'],
+        'debts' => ['debts'],
+        'payments' => ['debts'],
+        'medical-records' => ['medical'],
+        'travels' => ['travels'],
+        'meetings' => ['meetings', 'absences'],
+        'decisions' => ['meetings'],
+        'matches' => ['matches', 'absences'],
+        'match-callups' => ['matches'],
+        'training-sessions' => ['training', 'absences'],
+        'training-attendance' => ['training', 'absences'],
+        'match-attendance' => ['matches', 'absences'],
+    ];
+
+    /** Saves that tell their own news (a chat message, a phone's token), or nothing anyone is alerted of */
+    private const QUIET = ['me/push-token', 'tasks/messages/send', 'tasks/seen'];
+
     /**
-     * A save went through: the alerts it causes (an absence logged, a status changed, a reply…) are sent during it,
-     * before its answer (the cron sends only what the clock brings: near, late…). One run at a time; a save during
-     * one asks it for one more round, which sends its alerts too.
+     * A save went through: the alerts it causes (an absence logged, a status changed, a reply…) are sent right after
+     * its answer — the save itself does not wait — and only for what it touched (an absence: the absences' alerts),
+     * so it is quick. The cron sends what the clock brings (near, late…).
      */
-    public static function afterSave(): void
+    public static function afterSave(Request $request): void
     {
         if (!config('services.fcm.after_save', true)) {
             return;
         }
-        if (!Cache::add('alerts.push.running', 1, 120)) {
-            Cache::put('alerts.push.again', 1, 120);
-
+        $path = (string) preg_replace('#^api/#', '', $request->path());
+        if (in_array($path, self::QUIET, true)) {
             return;
         }
-        try {
-            do {
-                Cache::forget('alerts.push.again');
-                self::run('save');
-            } while (Cache::pull('alerts.push.again'));
-        } finally {
-            Cache::forget('alerts.push.running');
+        $sections = self::SECTIONS[explode('/', $path)[0]] ?? [];
+        if (!$sections) {
+            return;
         }
+        defer(fn () => self::run('save: ' . implode(',', $sections), $sections));
     }
 
     /** Every phone user's new alerts, sent now (its time and count in the log: storage/logs/laravel.log) */
-    public static function run(string $why = 'cron'): int
+    /** $only: these sections only (a save's); none: all of them (the cron) */
+    public static function run(string $why = 'cron', ?array $only = null): int
     {
         $started = microtime(true);
         $sent = 0;
@@ -56,9 +75,9 @@ class AlertPusher
         // Sent here and now: this may already run after a request's answer, where a new deferral would never run
         Push::$immediate = true;
         try {
-            $users->each(function (User $user) use (&$sent) {
+            $users->each(function (User $user) use (&$sent, $only) {
                 try {
-                    $sent += self::forUser($user);
+                    $sent += self::forUser($user, $only);
                 } catch (\Throwable $e) {
                     report($e);
                 }
@@ -73,12 +92,12 @@ class AlertPusher
         return $sent;
     }
 
-    public static function forUser(User $user): int
+    public static function forUser(User $user, ?array $only = null): int
     {
         $keys = DB::table('alert_pushes')->where('user_id', $user->id)->pluck('key')->flip();
         // The user's first run: marked, so from then on every new alert is sent
         $first = $keys->isEmpty();
-        $fresh = array_values(array_filter(self::alerts($user), fn ($a) => !isset($keys[$a['key']])));
+        $fresh = array_values(array_filter(self::alerts($user, $only), fn ($a) => !isset($keys[$a['key']])));
         $now = now();
         DB::table('alert_pushes')->insertOrIgnore(array_map(
             fn ($key) => ['user_id' => $user->id, 'key' => $key, 'created_at' => $now],
@@ -103,9 +122,10 @@ class AlertPusher
         return count($shown) + ($more > 0 ? 1 : 0);
     }
 
-    /** The user's alerts now, by the app's rules and rights */
-    public static function alerts(User $user): array
+    /** The user's alerts now, by the app's rules and rights ($only: these sections only) */
+    public static function alerts(User $user, ?array $only = null): array
     {
+        $wants = fn (string $section) => $only === null || in_array($section, $only, true);
         $can = fn (string $module, string $action = 'view') => RolePermissions::can($user, $module, $action);
         $manage = self::canManage($user);
         $get = fn (string $path) => self::fetch($user, $path);
@@ -127,11 +147,14 @@ class AlertPusher
         $managesMatches = in_array(true, $matchCan, true);
         $meetCan = ['meetings' => $can('meetings'), 'attendance' => $can('meetings', 'attendance'), 'addDecisions' => $can('decisions', 'add'), 'decisions' => $can('decisions')];
 
-        $myMeetings = $meetCan['meetings'] || $meetCan['decisions'] ? $list($get('/meetings/mine')) : [];
-        $myTravels = $can('travels') ? $list($get('/travels/mine'), 'data') : [];
+        $myMeetings = $wants('meetings') && ($meetCan['meetings'] || $meetCan['decisions']) ? $list($get('/meetings/mine')) : [];
+        $myTravels = $wants('travels') && $can('travels') ? $list($get('/travels/mine'), 'data') : [];
 
         // Each section on its own: one that fails (unexpected data) does not stop the others
-        $safe = function (callable $section) {
+        $safe = function (string $name, callable $section) use ($wants) {
+            if (!$wants($name)) {
+                return [];
+            }
             try {
                 return $section();
             } catch (\Throwable $e) {
@@ -142,37 +165,37 @@ class AlertPusher
         };
 
         return array_merge(
-            $safe(fn () => $can('disciplinary') ? $r->disciplinary($list($get('/disciplinary/mine'), 'data')) : []),
-            $safe(fn () => $manage && $can('disciplinary') ? $r->managerDisciplinary($list($get('/disciplinary'))) : []),
-            $safe(fn () => $manage ? $r->officerHearings($list($get('/disciplinary/officiating'), 'data')) : []),
-            $safe(fn () => $r->myTasks($list($get('/tasks/mine'), 'data'))),
-            $safe(fn () => $manage && $can('tasks') ? $r->managerTasks($list($get('/tasks'), 'data'), $me, $user->name) : []),
-            $safe(fn () => $r->feedback($list($get('/feedback/mine'), 'data'))),
-            $safe(fn () => $manage && $can('feedback') ? $r->managerFeedback($list($get('/feedback'), 'data')) : []),
-            $safe(fn () => $manage && $can('debts') ? $r->debts($list($get('/debts'), 'data')) : []),
-            $safe(fn () => $manage && $can('payments') ? $r->debts($list($get('/payments/credit'), 'data')) : []),
-            $safe(fn () => $can('medical') ? $r->medical($list($get('/medical-records/mine'), 'data')) : []),
-            $safe(fn () => $manage && $can('medical') ? $r->managerMedical($list($get('/medical-records'), 'data')) : []),
-            $safe(fn () => $can('medical') ? $r->medicalNotices($list($get('/medical-records/mine/notices'))) : []),
-            $safe(fn () => $can('travels') ? $r->travelNotices($list($get('/travels/mine/notices'))) : []),
-            $safe(fn () => $r->travels($myTravels)),
-            $safe(fn () => $manage && $can('travels') ? $r->managerTravels($list($get('/travels'), 'data'), array_column($myTravels, 'id')) : []),
-            $safe(fn () => $meetCan['meetings'] ? $r->meetingNotices($list($get('/meetings/mine/notices'))) : []),
-            $safe(fn () => $r->meetings($myMeetings, $meetCan['meetings'], $meetCan['decisions'])),
-            $safe(fn () => $manage && ($meetCan['meetings'] || $meetCan['attendance'] || $meetCan['addDecisions'] || $meetCan['decisions'])
+            $safe('disciplinary', fn () => $can('disciplinary') ? $r->disciplinary($list($get('/disciplinary/mine'), 'data')) : []),
+            $safe('disciplinary', fn () => $manage && $can('disciplinary') ? $r->managerDisciplinary($list($get('/disciplinary'))) : []),
+            $safe('disciplinary', fn () => $manage ? $r->officerHearings($list($get('/disciplinary/officiating'), 'data')) : []),
+            $safe('tasks', fn () => $r->myTasks($list($get('/tasks/mine'), 'data'))),
+            $safe('tasks', fn () => $manage && $can('tasks') ? $r->managerTasks($list($get('/tasks'), 'data'), $me, $user->name) : []),
+            $safe('feedback', fn () => $r->feedback($list($get('/feedback/mine'), 'data'))),
+            $safe('feedback', fn () => $manage && $can('feedback') ? $r->managerFeedback($list($get('/feedback'), 'data')) : []),
+            $safe('debts', fn () => $manage && $can('debts') ? $r->debts($list($get('/debts'), 'data')) : []),
+            $safe('debts', fn () => $manage && $can('payments') ? $r->debts($list($get('/payments/credit'), 'data')) : []),
+            $safe('medical', fn () => $can('medical') ? $r->medical($list($get('/medical-records/mine'), 'data')) : []),
+            $safe('medical', fn () => $manage && $can('medical') ? $r->managerMedical($list($get('/medical-records'), 'data')) : []),
+            $safe('medical', fn () => $can('medical') ? $r->medicalNotices($list($get('/medical-records/mine/notices'))) : []),
+            $safe('travels', fn () => $can('travels') ? $r->travelNotices($list($get('/travels/mine/notices'))) : []),
+            $safe('travels', fn () => $r->travels($myTravels)),
+            $safe('travels', fn () => $manage && $can('travels') ? $r->managerTravels($list($get('/travels'), 'data'), array_column($myTravels, 'id')) : []),
+            $safe('meetings', fn () => $meetCan['meetings'] ? $r->meetingNotices($list($get('/meetings/mine/notices'))) : []),
+            $safe('meetings', fn () => $r->meetings($myMeetings, $meetCan['meetings'], $meetCan['decisions'])),
+            $safe('meetings', fn () => $manage && ($meetCan['meetings'] || $meetCan['attendance'] || $meetCan['addDecisions'] || $meetCan['decisions'])
                 ? $r->managerMeetings(
                     $meetCan['meetings'] || $meetCan['attendance'] || $meetCan['addDecisions'] ? $list($get('/meetings')) : [],
                     $meetCan['decisions'] || $meetCan['addDecisions'] ? $list($get('/decisions')) : [],
                     $meetCan, $me, array_column($myMeetings, 'id'),
                 ) : []),
-            $safe(fn () => $can('absences') ? $r->absences($list($get('/absences/mine'))) : []),
-            $safe(fn () => $manage && $can('absences') ? $r->managerAbsences($list($get('/absences')), $can('absences', 'justify')) : []),
-            $safe(fn () => $can('matches') ? $r->matchNotices($list($get('/matches/mine/notices'))) : []),
-            $safe(fn () => $can('matches') ? $r->matches($list($get('/matches/mine'), 'data'), 'personal') : []),
-            $safe(fn () => $manage && $managesMatches ? $r->matches($list($get('/matches'), 'data'), 'management', $matchCan) : []),
-            $safe(fn () => $can('trainingSessions') ? $r->trainingNotices($list($get('/training-sessions/mine/notices'))) : []),
-            $safe(fn () => $can('trainingSessions') ? $r->training($list($get('/training-sessions/mine')), 'personal') : []),
-            $safe(fn () => $manage && $can('trainingSessions', 'attendance') ? $r->training($list($get('/training-sessions')), 'management', true) : []),
+            $safe('absences', fn () => $can('absences') ? $r->absences($list($get('/absences/mine'))) : []),
+            $safe('absences', fn () => $manage && $can('absences') ? $r->managerAbsences($list($get('/absences')), $can('absences', 'justify')) : []),
+            $safe('matches', fn () => $can('matches') ? $r->matchNotices($list($get('/matches/mine/notices'))) : []),
+            $safe('matches', fn () => $can('matches') ? $r->matches($list($get('/matches/mine'), 'data'), 'personal') : []),
+            $safe('matches', fn () => $manage && $managesMatches ? $r->matches($list($get('/matches'), 'data'), 'management', $matchCan) : []),
+            $safe('training', fn () => $can('trainingSessions') ? $r->trainingNotices($list($get('/training-sessions/mine/notices'))) : []),
+            $safe('training', fn () => $can('trainingSessions') ? $r->training($list($get('/training-sessions/mine')), 'personal') : []),
+            $safe('training', fn () => $manage && $can('trainingSessions', 'attendance') ? $r->training($list($get('/training-sessions')), 'management', true) : []),
         );
     }
 
