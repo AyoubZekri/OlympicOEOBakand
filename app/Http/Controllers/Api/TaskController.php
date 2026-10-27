@@ -120,6 +120,7 @@ class TaskController extends Controller
             'assignee_id' => $data['assignee_id'], 'created_by' => $request->user()->id,
             'due_at' => $data['due_at'] ?? null, 'status' => 'new',
         ]);
+        $this->saveAudio($request, $task);
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))], 201);
     }
@@ -163,8 +164,29 @@ class TaskController extends Controller
             $fields += ['kind' => $kind, 'due_at' => $kind === 'normal' ? ($data['due_at'] ?? null) : null];
         }
         $task->update($fields);
+        $this->saveAudio($request, $task);
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
+    }
+
+    /** A voice note's recording (sent with it, recorded again when edited): kept in public/uploads/tasks */
+    private function saveAudio(Request $request, Task $task): void
+    {
+        if ($task->kind !== 'voice' || !$request->hasFile('audio')) {
+            return;
+        }
+        $request->validate(['audio' => 'file|max:15360'], ['audio.max' => 'التسجيل أطول من اللازم']);
+        $file = $request->file('audio');
+        $ext = strtolower($file->getClientOriginalExtension()) ?: 'webm';
+        $ext = in_array($ext, ['webm', 'ogg', 'mp4', 'm4a', 'aac', 'wav', 'mp3'], true) ? $ext : 'webm';
+        $folder = public_path('uploads/tasks');
+        if (!file_exists($folder)) {
+            mkdir($folder, 0755, true);
+        }
+        $name = 'voice_' . $task->id . '_' . time() . '.' . $ext;
+        $file->move($folder, $name);
+        $task->forgetAudio();
+        $task->update(['audio_path' => asset('uploads/tasks/' . $name)]);
     }
 
     /** The management changes a task's status; the change (and its reason) is written in the conversation */
@@ -213,6 +235,16 @@ class TaskController extends Controller
         $task->delete();
 
         return response()->json(['message' => 'تم الحذف']);
+    }
+
+    /** Several tasks at once (the home page's selection); appointments are deleted one by one */
+    public function destroyMany(Request $request)
+    {
+        $ids = $request->validate(['ids' => 'required|array|min:1', 'ids.*' => 'integer'])['ids'];
+        $this->allow($request, 'delete', 'tasks');
+        $deleted = Task::where('is_template', false)->whereIn('id', $ids)->get()->each->delete()->count();
+
+        return response()->json(['message' => 'تم الحذف', 'deleted' => $deleted]);
     }
 
     /** The member opened the task: no longer "new" (the conversation stays unread until it is opened) */
@@ -366,6 +398,8 @@ class TaskController extends Controller
             'id' => $t->id,
             'title' => $t->title,
             'details' => $t->details,
+            // A voice note's recording (its link), to listen to
+            'audio_url' => $t->audio_path,
             'kind' => $t->kind,
             'nature' => $t->nature,
             'status' => $t->status,

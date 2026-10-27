@@ -54,7 +54,17 @@ class TaskTest extends TestCase
         $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'voice', 'title' => 'اتصل بالحكم قبل المساء', 'assignee_id' => $member->id]))
             ->assertCreated()->assertJsonPath('data.kind', 'voice')->assertJsonPath('data.due_at', null);
         $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'urgent', 'assignee_id' => $member->id]))->assertCreated()->assertJsonPath('data.kind', 'urgent');
-        Task::query()->delete();
+
+        // A voice note keeps its recording too; deleted with it
+        $audio = $this->as($manager)->post('/api/tasks/create', $this->task([
+            'kind' => 'voice', 'title' => 'اتصل بالحكم', 'assignee_id' => $member->id,
+            'audio' => \Illuminate\Http\UploadedFile::fake()->create('voice.webm', 20, 'audio/webm'),
+        ]), ['Accept' => 'application/json'])->assertCreated()->json('data.audio_url');
+        $this->assertStringContainsString('uploads/tasks/voice_', $audio);
+        $file = public_path('uploads/tasks/' . basename($audio));
+        $this->assertFileExists($file);
+        Task::query()->get()->each->delete();
+        $this->assertFileDoesNotExist($file);
 
         $id = $this->as($manager)->postJson('/api/tasks/create', $this->task(['nature' => 'call', 'assignee_id' => $member->id, 'due_at' => now('Africa/Algiers')->format('Y-m-d') . ' 12:00']))
             ->assertCreated()->assertJsonPath('data.status', 'new')->assertJsonPath('data.kind', 'normal')->assertJsonPath('data.overdue', false)->json('data.id');
@@ -92,6 +102,15 @@ class TaskTest extends TestCase
 
         // Deleted
         $this->as($manager)->postJson('/api/tasks/delete', ['id' => $id])->assertOk();
+        $this->assertSame(0, Task::count());
+
+        // Several at once (the selection); a member without the right cannot
+        $ids = [
+            $this->as($manager)->postJson('/api/tasks/create', $this->task(['assignee_id' => $member->id]))->json('data.id'),
+            $this->as($manager)->postJson('/api/tasks/create', $this->task(['assignee_id' => $member->id]))->json('data.id'),
+        ];
+        $this->as($member)->postJson('/api/tasks/delete-many', ['ids' => $ids])->assertForbidden();
+        $this->as($manager)->postJson('/api/tasks/delete-many', ['ids' => $ids])->assertOk()->assertJsonPath('deleted', 2);
         $this->assertSame(0, Task::count());
     }
 

@@ -17,7 +17,7 @@ class Task extends Model
     public const EVENTS = ['match', 'training', 'travel', 'meeting', 'birthday'];
 
     protected $fillable = [
-        'title', 'details', 'kind', 'nature', 'assignee_id', 'created_by',
+        'title', 'details', 'audio_path', 'kind', 'nature', 'assignee_id', 'created_by',
         'is_template', 'schedule', 'event_type', 'repeat', 'repeat_day', 'alert_offset', 'due_offset', 'last_run_on',
         'template_id', 'source_ref', 'event_label', 'alert_at', 'due_at', 'status', 'done_at',
         'assignee_seen_at', 'assignee_read_at', 'managers_read_at',
@@ -36,6 +36,24 @@ class Task extends Model
         'assignee_read_at' => 'datetime',
         'managers_read_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // A voice note's recording goes with it
+        static::deleting(fn (Task $task) => $task->forgetAudio());
+    }
+
+    /** The voice note's recording file (public/uploads/tasks), removed */
+    public function forgetAudio(): void
+    {
+        if (!$this->audio_path) {
+            return;
+        }
+        $file = public_path('uploads/tasks/' . basename(parse_url($this->audio_path, PHP_URL_PATH)));
+        if (is_file($file)) {
+            @unlink($file);
+        }
+    }
 
     public function assignee()
     {

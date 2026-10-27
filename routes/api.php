@@ -60,6 +60,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tasks/status', [App\Http\Controllers\Api\TaskController::class, 'status']);
     Route::post('/tasks/templates/toggle', [App\Http\Controllers\Api\TaskController::class, 'toggle']);
     Route::post('/tasks/delete', [App\Http\Controllers\Api\TaskController::class, 'destroy']);
+    Route::post('/tasks/delete-many', [App\Http\Controllers\Api\TaskController::class, 'destroyMany']);
     Route::post('/tasks/seen', [App\Http\Controllers\Api\TaskController::class, 'seen']);
     Route::get('/tasks/messages', [App\Http\Controllers\Api\TaskController::class, 'messages']);
     Route::post('/tasks/messages/send', [App\Http\Controllers\Api\TaskController::class, 'send']);
