@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Alerts\AlertPusher;
 use App\Services\AlertsVersion;
 use Closure;
 use Illuminate\Http\Request;
@@ -18,6 +19,10 @@ class BumpAlertsVersion
 
         if (!$request->isMethodSafe() && $response->getStatusCode() < 400) {
             AlertsVersion::bump();
+            // What it caused (an absence logged, a status changed, a reply…) reaches the phones now, not at the next cron
+            if (!$request->is('api/me/push-token')) {
+                AlertPusher::afterSave();
+            }
         }
         AlertsVersion::reset();
 

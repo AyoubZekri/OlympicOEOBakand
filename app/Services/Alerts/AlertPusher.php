@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Push;
 use App\Services\RolePermissions;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -19,6 +20,32 @@ class AlertPusher
 {
     /** At most this many notifications per user per run (the others in one) */
     private const PER_RUN = 4;
+
+    /**
+     * A save went through: the alerts it causes are sent now, after the answer (the cron sends only what the clock
+     * brings: near, late…). One run at a time; saves during it ask for one more run after it.
+     */
+    public static function afterSave(): void
+    {
+        if (!config('services.fcm.after_save', true)) {
+            return;
+        }
+        if (!Cache::add('alerts.push.running', 1, 120)) {
+            Cache::put('alerts.push.again', 1, 120);
+
+            return;
+        }
+        defer(function () {
+            try {
+                do {
+                    Cache::forget('alerts.push.again');
+                    self::run();
+                } while (Cache::pull('alerts.push.again'));
+            } finally {
+                Cache::forget('alerts.push.running');
+            }
+        });
+    }
 
     public static function run(): int
     {
@@ -110,7 +137,7 @@ class AlertPusher
             $safe(fn () => $manage && $can('disciplinary') ? $r->managerDisciplinary($list($get('/disciplinary'))) : []),
             $safe(fn () => $manage ? $r->officerHearings($list($get('/disciplinary/officiating'), 'data')) : []),
             $safe(fn () => $r->myTasks($list($get('/tasks/mine'), 'data'))),
-            $safe(fn () => $manage && $can('tasks') ? $r->managerTasks($list($get('/tasks'), 'data'), $me) : []),
+            $safe(fn () => $manage && $can('tasks') ? $r->managerTasks($list($get('/tasks'), 'data'), $me, $user->name) : []),
             $safe(fn () => $r->feedback($list($get('/feedback/mine'), 'data'))),
             $safe(fn () => $manage && $can('feedback') ? $r->managerFeedback($list($get('/feedback'), 'data')) : []),
             $safe(fn () => $manage && $can('debts') ? $r->debts($list($get('/debts'), 'data')) : []),

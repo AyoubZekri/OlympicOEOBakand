@@ -21,6 +21,8 @@ class PushTest extends TestCase
     {
         parent::setUp();
         $this->withoutDefer();
+        // Only what these tests send themselves (the alerts after a save: AlertPushTest)
+        config(['services.fcm.after_save' => false]);
         // A test Firebase project's service account (no real key: Google's access token is already in hand)
         $this->key = tempnam(sys_get_temp_dir(), 'fcm');
         file_put_contents($this->key, json_encode(['project_id' => 'olympic-test', 'client_email' => 'push@olympic-test.iam.gserviceaccount.com', 'private_key' => 'test']));

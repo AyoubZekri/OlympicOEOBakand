@@ -88,7 +88,11 @@ class Push
                     'data' => (object) array_map('strval', $data),
                     'android' => [
                         'priority' => 'high',
-                        'notification' => ['channel_id' => 'tasks', 'sound' => 'default', 'color' => '#F97316', 'icon' => 'ic_stat_notify'],
+                        // Shown at the top of the screen (heads-up), with its sound, on the lock screen too
+                        'notification' => [
+                            'channel_id' => 'alerts', 'sound' => 'default', 'color' => '#F97316', 'icon' => 'ic_stat_notify',
+                            'notification_priority' => 'PRIORITY_HIGH', 'visibility' => 'PUBLIC', 'default_vibrate_timings' => true,
+                        ],
                     ],
                 ]],
             );

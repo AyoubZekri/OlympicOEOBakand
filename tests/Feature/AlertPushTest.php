@@ -77,6 +77,23 @@ class AlertPushTest extends TestCase
         $this->assertCount(2, $this->sent());
     }
 
+    public function test_what_a_save_causes_is_sent_at_once_without_the_cron(): void
+    {
+        $this->withoutDefer();
+        $role = Role::create(['name' => 'مسير', 'type' => 'partial', 'permissions' => json_encode(['tasks' => ['view' => true, 'add' => true, 'changeStatus' => true]])]);
+        $manager = User::factory()->create(['role_id' => $role->id]);
+        $member = User::factory()->create(['fcm_token' => 'member-phone']);
+        $task = $this->lateTask($member, 'تحضير الملعب');
+        // Already known to the phone
+        AlertPusher::run();
+        $this->assertCount(0, $this->sent());
+
+        // Saved (its status changed back to open, a new deadline passed): the member's phone at once
+        Task::whereKey($task->id)->update(['due_at' => TaskSchedule::localNow()->subMinutes(5)]);
+        $this->actingAs($manager)->postJson('/api/tasks/messages/send', ['id' => $task->id, 'body' => 'أين وصلت؟']);
+        $this->assertContains(['member-phone', 'تأخرت مهمة', "/?task={$task->id}"], $this->sent());
+    }
+
     public function test_many_new_alerts_come_as_a_few_and_one_summary(): void
     {
         $member = User::factory()->create(['fcm_token' => 'member-phone']);

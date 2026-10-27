@@ -937,7 +937,8 @@ class AlertRules
         return $out;
     }
 
-    public function managerTasks(array $tasks, $me): array
+    /** $myName: who created it is not told about its own urgent task */
+    public function managerTasks(array $tasks, $me, ?string $myName = null): array
     {
         $out = [];
         foreach ($tasks as $t) {
@@ -958,7 +959,7 @@ class AlertRules
             } elseif ($due && $due->getTimestamp() - $this->now->getTimestamp() <= 3 * 3600) {
                 $out[] = self::alert("mtask:due:{$t['id']}:{$t['due_at']}", 'اقترب آخر أجل مهمة', $title, "{$given} · آخر أجل: " . self::when($due), $link, 'management');
             }
-            if (($t['kind'] ?? '') === 'urgent' && !empty($t['assignee']) && empty($t['seen'])) {
+            if (($t['kind'] ?? '') === 'urgent' && !empty($t['assignee']) && empty($t['seen']) && ($t['created_by'] ?? null) !== $myName) {
                 $out[] = self::alert("mtask:urgent:{$t['id']}", 'مهمة عاجلة لم يفتحها المكلّف بعد', $title, $t['assignee']['name'] ?? '', $link, 'management');
             }
         }
