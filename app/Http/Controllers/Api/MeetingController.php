@@ -12,7 +12,10 @@ class MeetingController extends Controller
     public function index()
     {
         $meetings = Meeting::with('meetingAttendees.memberId')->orderBy('date', 'desc')->orderBy('time', 'desc')->get();
-        $meetings->transform(function ($meeting) {
+        // How many decisions each has (its deletion takes them with it: the page says so first)
+        $decisions = \DB::table('meeting_decisions')->whereNotNull('meeting_id')->groupBy('meeting_id')->pluck(\DB::raw('count(*)'), 'meeting_id');
+        $meetings->transform(function ($meeting) use ($decisions) {
+            $meeting->decisions_count = (int) ($decisions[$meeting->id] ?? 0);
             $originalAttendees = is_array($meeting->attendees) ? collect($meeting->attendees)->keyBy('id') : collect();
             
             $attendees = $meeting->meetingAttendees->map(function ($ma) use ($originalAttendees) {
@@ -140,6 +143,8 @@ class MeetingController extends Controller
             MeetingNotice::record($meeting, 'deleted', $this->invitedIds($meeting));
         }
         \DB::table('meeting_attendees')->where('meeting_id', $meeting->id)->delete();
+        // Its decisions go with it (the page asked first)
+        \DB::table('meeting_decisions')->where('meeting_id', $meeting->id)->delete();
         $meeting->delete();
         return response()->json(null, 204);
     }

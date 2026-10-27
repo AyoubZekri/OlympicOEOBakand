@@ -86,7 +86,8 @@ class Push
                 "https://fcm.googleapis.com/v1/projects/{$key['project_id']}/messages:send",
                 ['message' => [
                     'token' => $token,
-                    'notification' => ['title' => $title, 'body' => $body],
+                    // The club's logo inside it (beside the text, larger when opened): public/notification-logo.png
+                    'notification' => ['title' => $title, 'body' => $body, 'image' => asset('notification-logo.png')],
                     // An object even when empty («{}», not «[]»: FCM refuses a list)
                     'data' => (object) array_map('strval', $data),
                     'android' => [
