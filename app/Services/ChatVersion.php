@@ -24,7 +24,13 @@ class ChatVersion
     /** Someone has this chat open now (said with every check): no notification for its messages while they look */
     public static function viewing(int $taskId, int $userId): void
     {
-        Cache::store('file')->put("chat.viewing.{$taskId}.{$userId}", 1, 8);
+        Cache::store('file')->put("chat.viewing.{$taskId}.{$userId}", 1, 6);
+    }
+
+    /** They closed it (or the app went to the background): notified again at once */
+    public static function left(int $taskId, int $userId): void
+    {
+        Cache::store('file')->forget("chat.viewing.{$taskId}.{$userId}");
     }
 
     public static function isViewing(int $taskId, int $userId): bool

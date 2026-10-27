@@ -376,7 +376,8 @@ class TaskController extends Controller
     {
         $id = (int) $request->query('id');
         if ($me = (int) $request->query('me')) {
-            ChatVersion::viewing($id, $me);
+            // leave: closed, or the app in the background — its messages are notified again at once
+            $request->boolean('leave') ? ChatVersion::left($id, $me) : ChatVersion::viewing($id, $me);
         }
 
         return response()->json(['version' => ChatVersion::current($id)]);

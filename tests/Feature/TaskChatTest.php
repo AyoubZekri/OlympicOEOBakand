@@ -77,10 +77,18 @@ class TaskChatTest extends TestCase
         $this->as($manager)->postJson('/api/tasks/messages/send', ['id' => $id, 'body' => 'أين وصلت؟'])->assertCreated();
         $this->assertSame($before, $sent());
 
-        // Closed (no check for a while): notified again
-        $this->travel(10)->seconds();
+        // Closed: it says so at once, and the next message is a notification right away
+        Auth::forgetGuards();
+        $this->getJson("/api/tasks/chat-version?id={$id}&me={$member->id}&leave=1")->assertOk();
         $this->as($manager)->postJson('/api/tasks/messages/send', ['id' => $id, 'body' => 'رد عليّ'])->assertCreated();
         $this->assertSame($before + 1, $sent());
+
+        // Open again, then no check for a while (the app killed): notified again too
+        Auth::forgetGuards();
+        $this->getJson("/api/tasks/chat-version?id={$id}&me={$member->id}")->assertOk();
+        $this->travel(10)->seconds();
+        $this->as($manager)->postJson('/api/tasks/messages/send', ['id' => $id, 'body' => 'وينك؟'])->assertCreated();
+        $this->assertSame($before + 2, $sent());
         @unlink($key);
     }
 }
