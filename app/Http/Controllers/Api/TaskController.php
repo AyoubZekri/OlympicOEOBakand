@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\TaskMessage;
+use App\Services\Push;
 use App\Services\RolePermissions;
 use App\Services\TaskSchedule;
 use Illuminate\Http\Request;
@@ -121,6 +122,7 @@ class TaskController extends Controller
             'due_at' => $data['due_at'] ?? null, 'status' => 'new',
         ]);
         $this->saveAudio($request, $task);
+        $this->pushGiven($task, $request);
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))], 201);
     }
@@ -148,7 +150,8 @@ class TaskController extends Controller
         ) : [];
 
         $fields = ['title' => $data['title'], 'details' => $data['details'] ?? null, 'nature' => $data['nature'], 'assignee_id' => $data['assignee_id']];
-        if ((int) $task->assignee_id !== (int) $data['assignee_id']) {
+        $reassigned = (int) $task->assignee_id !== (int) $data['assignee_id'];
+        if ($reassigned) {
             // Another member: it is new to them
             $fields += ['assignee_seen_at' => null, 'assignee_read_at' => null];
         }
@@ -165,8 +168,21 @@ class TaskController extends Controller
         }
         $task->update($fields);
         $this->saveAudio($request, $task);
+        // Given to another member: told now (an appointment's task, once its alert time came)
+        if ($reassigned && ($task->kind !== 'scheduled' || !$task->alert_at || $task->alert_at->lte(TaskSchedule::localNow()))) {
+            $this->pushGiven($task, $request);
+        }
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
+    }
+
+    private const STATUS_WORDS = ['new' => 'جديدة', 'in_progress' => 'قيد التنفيذ', 'on_hold' => 'معلّقة', 'done' => 'منجزة', 'cancelled' => 'ملغاة'];
+
+    /** A task given to a member (or to another one): told on the phone, by its kind */
+    private function pushGiven(Task $task, Request $request): void
+    {
+        $title = ['urgent' => 'مهمة عاجلة', 'voice' => 'تنبيه صوتي', 'scheduled' => 'موعد'][$task->kind] ?? 'مهمة جديدة';
+        Push::send($task->assignee_id, $title, $task->title, ['task_id' => $task->id], $request->user()->id);
     }
 
     /** A voice note's recording (sent with it, recorded again when edited): kept in public/uploads/tasks */
@@ -207,6 +223,7 @@ class TaskController extends Controller
 
         $task->update(['status' => $data['status'], 'done_at' => $data['status'] === 'done' ? now() : null, 'managers_read_at' => now()]);
         TaskMessage::create(['task_id' => $task->id, 'user_id' => $request->user()->id, 'status' => $data['status'], 'body' => $data['note'] ?? null]);
+        Push::send($task->assignee_id, 'تغيّرت حالة المهمة', '«' . $task->title . '»: ' . (self::STATUS_WORDS[$data['status']] ?? $data['status']), ['task_id' => $task->id], $request->user()->id);
 
         return response()->json(['data' => $this->present($this->tasks()->find($task->id))]);
     }
@@ -288,6 +305,14 @@ class TaskController extends Controller
         $data = $request->validate(['body' => 'required|string|max:3000'], ['body.required' => 'اكتب الرسالة']);
         $message = TaskMessage::create(['task_id' => $task->id, 'user_id' => $request->user()->id, 'body' => $data['body']]);
         $this->markRead($request, $task);
+        // Everyone in the conversation (its member, who gave it, who wrote in it), but who wrote this
+        Push::send(
+            collect([$task->assignee_id, $task->created_by])->merge($task->messages()->whereNotNull('user_id')->distinct()->pluck('user_id')),
+            'رسالة من ' . $request->user()->name,
+            $data['body'],
+            ['task_id' => $task->id],
+            $request->user()->id,
+        );
 
         return response()->json(['data' => [
             'id' => $message->id, 'body' => $message->body, 'status' => null, 'by' => $request->user()->name, 'mine' => true,

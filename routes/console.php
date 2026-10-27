@@ -18,9 +18,10 @@ Artisan::command('members:create-accounts', function () {
     $this->info("Created {$count} member account(s).");
 })->purpose('Create the user accounts of the members that have none');
 
-// Periodic tasks: create the ones that are due (the tasks' lists also do it when opened, so it works without cron too)
+// Periodic tasks: create the ones that are due, and tell the appointments' members whose alert time came (the tasks'
+// lists also do it when opened, so it works without cron too)
 Artisan::command('tasks:generate', function () {
     \App\Services\TaskSchedule::generateDue(true);
     $this->info('Periodic tasks checked.');
 })->purpose('Create the periodic tasks that are due');
-\Illuminate\Support\Facades\Schedule::command('tasks:generate')->hourly();
+\Illuminate\Support\Facades\Schedule::command('tasks:generate')->everyFiveMinutes();

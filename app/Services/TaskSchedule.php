@@ -194,6 +194,25 @@ class TaskSchedule
         self::generateBirthdays($today);
         self::generateAutoEvents(self::localNow());
         self::generateAutoBirthdays(self::localNow());
+        self::pushArrived();
+    }
+
+    /**
+     * An appointment's task whose alert time came: its member is told on the phone, once. Those whose alert passed
+     * more than a day ago (before the notifications existed, or missed) are only marked.
+     */
+    public static function pushArrived(): void
+    {
+        $now = self::localNow();
+        $tasks = Task::where('is_template', false)->where('kind', 'scheduled')->whereNull('pushed_at');
+        (clone $tasks)->whereNotNull('alert_at')->where('alert_at', '<', $now->copy()->subDay())->update(['pushed_at' => now()]);
+        (clone $tasks)->whereIn('status', ['new', 'in_progress', 'on_hold'])
+            ->where(fn ($q) => $q->whereNull('alert_at')->orWhere('alert_at', '<=', $now))
+            ->get()
+            ->each(function (Task $task) {
+                $task->update(['pushed_at' => now()]);
+                Push::send($task->assignee_id, 'موعد', $task->title . ($task->event_label ? ' · ' . $task->event_label : ''), ['task_id' => $task->id]);
+            });
     }
 
     /**

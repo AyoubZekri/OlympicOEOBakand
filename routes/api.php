@@ -85,6 +85,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/absences/delete', [App\Http\Controllers\Api\AbsenceController::class, 'destroy']);
 
     Route::get('/user', [AuthController::class, 'user']);
+    // The Android app's notifications: this phone's token (null when signing out)
+    Route::post('/me/push-token', [App\Http\Controllers\Api\PushTokenController::class, 'store']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
     // Roles Routes

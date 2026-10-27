@@ -20,7 +20,7 @@ class Task extends Model
         'title', 'details', 'audio_path', 'kind', 'nature', 'assignee_id', 'created_by',
         'is_template', 'schedule', 'event_type', 'repeat', 'repeat_day', 'alert_offset', 'due_offset', 'last_run_on',
         'template_id', 'source_ref', 'event_label', 'alert_at', 'due_at', 'status', 'done_at',
-        'assignee_seen_at', 'assignee_read_at', 'managers_read_at',
+        'assignee_seen_at', 'assignee_read_at', 'managers_read_at', 'pushed_at',
     ];
 
     protected $casts = [
@@ -35,6 +35,7 @@ class Task extends Model
         'assignee_seen_at' => 'datetime',
         'assignee_read_at' => 'datetime',
         'managers_read_at' => 'datetime',
+        'pushed_at' => 'datetime',
     ];
 
     protected static function booted(): void
