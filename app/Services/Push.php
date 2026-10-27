@@ -42,13 +42,38 @@ class Push
         });
     }
 
-    private static function deliver(int $userId, string $token, string $title, string $body, array $data): void
+    /**
+     * A test notification to one user, sent now, with what happened in words (php artisan push:test): the key's
+     * project, the phone's token, Google's sign-in and FCM's answer
+     */
+    public static function test(User $user): string
+    {
+        $key = self::credentials();
+        if (!$key) {
+            return 'لا يوجد مفتاح Firebase صالح في: ' . config('services.fcm.credentials');
+        }
+        $lines = ['مشروع المفتاح: ' . $key['project_id']];
+        if (!$user->fcm_token) {
+            return implode("\n", [...$lines, 'هذا المستخدم ليس له token (لم يدخل من تطبيق الأندرويد بعد)']);
+        }
+        Cache::forget('fcm.access_token');
+        if (!self::accessToken($key)) {
+            return implode("\n", [...$lines, 'رفض Google الدخول بهذا المفتاح (المفتاح خاطئ أو محذوف)']);
+        }
+        $response = self::deliver($user->id, $user->fcm_token, 'تجربة الإشعارات', 'إذا وصلك هذا، الإشعارات تعمل', []);
+
+        return implode("\n", [...$lines, 'جواب FCM: ' . ($response ? $response->status() . ' ' . $response->body() : 'لا جواب')]);
+    }
+
+    private static function deliver(int $userId, string $token, string $title, string $body, array $data): ?\Illuminate\Http\Client\Response
     {
         try {
             $key = self::credentials();
             $access = self::accessToken($key);
             if (!$access) {
-                return;
+                Log::warning('Push not sent: Google refused the Firebase key');
+
+                return null;
             }
             $response = Http::withToken($access)->timeout(8)->post(
                 "https://fcm.googleapis.com/v1/projects/{$key['project_id']}/messages:send",
@@ -69,8 +94,12 @@ class Push
             } elseif ($response->failed()) {
                 Log::warning('Push not sent', ['status' => $response->status(), 'body' => $response->body()]);
             }
+
+            return $response;
         } catch (\Throwable $e) {
             Log::warning('Push not sent: ' . $e->getMessage());
+
+            return null;
         }
     }
 
