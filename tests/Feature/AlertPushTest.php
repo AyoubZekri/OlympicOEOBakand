@@ -94,6 +94,21 @@ class AlertPushTest extends TestCase
         $this->assertContains(['member-phone', 'تأخرت مهمة', "/?task={$task->id}"], $this->sent());
     }
 
+    public function test_an_absence_logged_on_a_member_reaches_their_phone_at_once(): void
+    {
+        $this->withoutDefer();
+        $memberRole = Role::create(['name' => 'لاعب', 'type' => 'partial', 'permissions' => json_encode(['absences' => ['view' => true]])]);
+        $user = User::factory()->create(['fcm_token' => 'member-phone', 'role_id' => $memberRole->id]);
+        $me = \App\Models\Individual::create(['type' => 'player', 'first_name' => 'أحمد', 'last_name' => 'علي', 'user_id' => $user->id]);
+        $manager = User::factory()->create();
+        AlertPusher::run();
+
+        // The manager logs it: the member's phone at once (no cron), and it opens the member's absences
+        $this->actingAs($manager)->postJson('/api/absences/create', ['player_id' => $me->id, 'absence_type' => 'غياب', 'event_category' => 'تدريب', 'event_date' => now('Africa/Algiers')->toDateString()])->assertCreated();
+        $absence = \App\Models\AppAbsence::latest('id')->first();
+        $this->assertSame([['member-phone', 'سُجل عليك غياب', "/my-absences?absence={$absence->id}"]], $this->sent());
+    }
+
     public function test_many_new_alerts_come_as_a_few_and_one_summary(): void
     {
         $member = User::factory()->create(['fcm_token' => 'member-phone']);
