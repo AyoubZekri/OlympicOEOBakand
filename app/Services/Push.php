@@ -35,11 +35,13 @@ class Push
         }
         $body = mb_strlen($body) > 160 ? mb_substr($body, 0, 157) . '…' : $body;
 
-        defer(function () use ($tokens, $title, $body, $data) {
+        $send = function () use ($tokens, $title, $body, $data) {
             foreach ($tokens as $userId => $token) {
                 self::deliver((int) $userId, $token, $title, $body, $data);
             }
-        });
+        };
+        // A command (the scheduler) sends at once; a request after its answer
+        app()->runningInConsole() ? $send() : defer($send);
     }
 
     /**

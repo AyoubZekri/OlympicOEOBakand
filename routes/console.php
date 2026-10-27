@@ -38,6 +38,12 @@ Artisan::command('push:test {user?}', function (?string $user = null) {
     $this->line(\App\Services\Push::test($found));
 })->purpose('Send a test notification to a user\'s phone');
 
+// The app's alerts as Firebase notifications: each new one to the phones of who it concerns, once
+Artisan::command('alerts:push', function () {
+    $this->info('Sent: ' . \App\Services\Alerts\AlertPusher::run());
+})->purpose('Send the new alerts to the phones (Firebase)');
+\Illuminate\Support\Facades\Schedule::command('alerts:push')->everyFiveMinutes()->withoutOverlapping();
+
 // Periodic tasks: create the ones that are due, and tell the appointments' members whose alert time came (the tasks'
 // lists also do it when opened, so it works without cron too)
 Artisan::command('tasks:generate', function () {
