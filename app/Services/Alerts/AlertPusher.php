@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The app's alerts as Firebase notifications (php artisan alerts:push, every few minutes): for each user signed in
@@ -22,8 +23,9 @@ class AlertPusher
     private const PER_RUN = 4;
 
     /**
-     * A save went through: the alerts it causes are sent now, after the answer (the cron sends only what the clock
-     * brings: near, late…). One run at a time; saves during it ask for one more run after it.
+     * A save went through: the alerts it causes (an absence logged, a status changed, a reply…) are sent during it,
+     * before its answer (the cron sends only what the clock brings: near, late…). One run at a time; a save during
+     * one asks it for one more round, which sends its alerts too.
      */
     public static function afterSave(): void
     {
@@ -35,31 +37,38 @@ class AlertPusher
 
             return;
         }
-        defer(function () {
-            try {
-                do {
-                    Cache::forget('alerts.push.again');
-                    self::run();
-                } while (Cache::pull('alerts.push.again'));
-            } finally {
-                Cache::forget('alerts.push.running');
-            }
-        });
+        try {
+            do {
+                Cache::forget('alerts.push.again');
+                self::run('save');
+            } while (Cache::pull('alerts.push.again'));
+        } finally {
+            Cache::forget('alerts.push.running');
+        }
     }
 
-    public static function run(): int
+    /** Every phone user's new alerts, sent now (its time and count in the log: storage/logs/laravel.log) */
+    public static function run(string $why = 'cron'): int
     {
+        $started = microtime(true);
         $sent = 0;
-        User::whereNotNull('fcm_token')->where('fcm_token', '!=', '')->with('role')->get()
-            ->each(function (User $user) use (&$sent) {
+        $users = User::whereNotNull('fcm_token')->where('fcm_token', '!=', '')->with('role')->get();
+        // Sent here and now: this may already run after a request's answer, where a new deferral would never run
+        Push::$immediate = true;
+        try {
+            $users->each(function (User $user) use (&$sent) {
                 try {
                     $sent += self::forUser($user);
                 } catch (\Throwable $e) {
                     report($e);
                 }
             });
+        } finally {
+            Push::$immediate = false;
+        }
         // What was sent long ago (alerts that ended): forgotten
         DB::table('alert_pushes')->where('created_at', '<', now()->subDays(60))->delete();
+        Log::info("alerts:push ({$why}): {$users->count()} phones, {$sent} sent, " . round(microtime(true) - $started, 1) . 's');
 
         return $sent;
     }

@@ -17,6 +17,9 @@ class Push
 {
     private const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
+    /** Send at once, not after the answer (the alerts' run, already after it) */
+    public static bool $immediate = false;
+
     /**
      * One notification to these users (ids; none: nobody), except who caused it; a tap opens $data['task_id'] in the app
      *
@@ -40,8 +43,8 @@ class Push
                 self::deliver((int) $userId, $token, $title, $body, $data);
             }
         };
-        // A command (the scheduler) sends at once; a request after its answer
-        app()->runningInConsole() ? $send() : defer($send);
+        // A command (the scheduler), or the alerts' run, sends at once; a request after its answer
+        app()->runningInConsole() || self::$immediate ? $send() : defer($send);
     }
 
     /**

@@ -38,6 +38,22 @@ Artisan::command('push:test {user?}', function (?string $user = null) {
     $this->line(\App\Services\Push::test($found));
 })->purpose('Send a test notification to a user\'s phone');
 
+// What the server sees for a user (by email or id): their phone, their rights, their alerts now and whether each was sent
+Artisan::command('alerts:check {user}', function (string $user) {
+    $found = \App\Models\User::where('email', $user)->orWhere('id', $user)->first();
+    if (!$found) {
+        return $this->error('لا يوجد مستخدم بهذا البريد أو الرقم');
+    }
+    $this->line('الهاتف: ' . ($found->fcm_token ? 'مربوط (token موجود)' : 'غير مربوط — لم يدخل من تطبيق الأندرويد'));
+    $this->line('الدور: ' . ($found->role?->name ?? 'بدون دور') . ' · الغيابات: ' . (\App\Services\RolePermissions::can($found, 'absences', 'view') ? 'نعم' : 'لا (لا تنبيهات غياب)'));
+    $sent = \Illuminate\Support\Facades\DB::table('alert_pushes')->where('user_id', $found->id)->pluck('key')->flip();
+    $alerts = \App\Services\Alerts\AlertPusher::alerts($found);
+    if (!$alerts) {
+        return $this->warn('لا توجد تنبيهات حالياً لهذا المستخدم');
+    }
+    $this->table(['التنبيه', 'العنوان', 'أُرسل؟'], array_map(fn ($a) => [$a['key'], $a['title'], isset($sent[$a['key']]) ? 'نعم' : 'لا'], $alerts));
+})->purpose('Show what the server sees for a user\'s notifications');
+
 // The app's alerts as Firebase notifications: each new one to the phones of who it concerns, once
 Artisan::command('alerts:push', function () {
     $this->info('Sent: ' . \App\Services\Alerts\AlertPusher::run());
