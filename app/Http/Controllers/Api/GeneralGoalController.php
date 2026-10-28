@@ -4,20 +4,18 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\GeneralGoal;
-use App\Models\Individual;
+use App\Models\User;
 use App\Services\RolePermissions;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
-/** The management's general goals: each one a goal, the member responsible for it (المكلّف) and its season */
+/** The management's general goals: each one a goal, the user responsible for it (المكلّف) and its season */
 class GeneralGoalController extends Controller
 {
-    private const MEMBER_TYPES = ['player' => 'لاعب', 'coach' => 'مدرب', 'employee' => 'موظف'];
-
     public function index(Request $request)
     {
         $this->allow($request, 'view');
-        $goals = GeneralGoal::with('individual:id,first_name,last_name,type,photo')
+        $goals = GeneralGoal::with('user:id,name')
             ->orderByDesc('season')
             ->orderByDesc('id')
             ->get();
@@ -25,15 +23,14 @@ class GeneralGoalController extends Controller
         return response()->json(['status' => 'success', 'data' => $goals->map(fn ($g) => $this->present($g))]);
     }
 
-    /** What the form picks from: the members, and the seasons already used */
+    /** What the form picks from: the users, and the seasons already used */
     public function options(Request $request)
     {
         $this->allow($request, 'view');
-        $members = Individual::orderBy('first_name')->get(['id', 'first_name', 'last_name', 'type', 'photo'])
-            ->map(fn ($m) => $this->member($m));
+        $users = User::orderBy('name')->get(['id', 'name'])->map(fn ($u) => $this->user($u));
         $seasons = GeneralGoal::distinct()->orderByDesc('season')->pluck('season');
 
-        return response()->json(['status' => 'success', 'data' => ['members' => $members, 'seasons' => $seasons]]);
+        return response()->json(['status' => 'success', 'data' => ['users' => $users, 'seasons' => $seasons]]);
     }
 
     public function store(Request $request)
@@ -41,7 +38,7 @@ class GeneralGoalController extends Controller
         $this->allow($request, 'add');
         $goal = GeneralGoal::create($this->validated($request) + ['created_by' => $request->user()->id]);
 
-        return response()->json(['status' => 'success', 'data' => $this->present($goal->load('individual'))], 201);
+        return response()->json(['status' => 'success', 'data' => $this->present($goal->load('user'))], 201);
     }
 
     public function update(Request $request)
@@ -51,7 +48,7 @@ class GeneralGoalController extends Controller
         $goal = GeneralGoal::findOrFail($request->input('id'));
         $goal->update($this->validated($request));
 
-        return response()->json(['status' => 'success', 'data' => $this->present($goal->fresh('individual'))]);
+        return response()->json(['status' => 'success', 'data' => $this->present($goal->fresh('user'))]);
     }
 
     public function destroy(Request $request)
@@ -72,12 +69,12 @@ class GeneralGoalController extends Controller
     {
         $data = $request->validate([
             'goal' => 'required|string|max:5000',
-            'individual_id' => 'required|integer|exists:individuals,id',
+            'user_id' => 'required|integer|exists:users,id',
             'season' => 'required|string|max:20',
         ], [
             'goal.required' => 'اكتب الهدف',
-            'individual_id.required' => 'اختر المكلّف',
-            'individual_id.exists' => 'العضو غير موجود',
+            'user_id.required' => 'اختر المكلّف',
+            'user_id.exists' => 'المستخدم غير موجود',
             'season.required' => 'اختر الموسم',
         ]);
 
@@ -91,14 +88,9 @@ class GeneralGoalController extends Controller
         return $data;
     }
 
-    private function member(Individual $m): array
+    private function user(User $u): array
     {
-        return [
-            'id' => $m->id,
-            'name' => trim("{$m->first_name} {$m->last_name}"),
-            'type' => self::MEMBER_TYPES[$m->type] ?? $m->type,
-            'photo' => $m->photo,
-        ];
+        return ['id' => $u->id, 'name' => $u->name];
     }
 
     private function present(GeneralGoal $g): array
@@ -106,8 +98,8 @@ class GeneralGoalController extends Controller
         return [
             'id' => $g->id,
             'goal' => $g->goal,
-            'individual_id' => $g->individual_id,
-            'member' => $g->individual ? $this->member($g->individual) : null,
+            'user_id' => $g->user_id,
+            'user' => $g->user ? $this->user($g->user) : null,
             'season' => $g->season,
             'created_at' => $g->created_at?->toDateTimeString(),
             'updated_at' => $g->updated_at?->toDateTimeString(),
