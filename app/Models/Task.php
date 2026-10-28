@@ -18,7 +18,7 @@ class Task extends Model
 
     protected $fillable = [
         'title', 'details', 'audio_path', 'kind', 'nature', 'assignee_id', 'created_by',
-        'is_template', 'schedule', 'event_type', 'repeat', 'repeat_day', 'alert_offset', 'due_offset', 'last_run_on',
+        'is_template', 'schedule', 'event_type', 'repeat', 'repeat_day', 'once_at', 'alert_offset', 'due_offset', 'last_run_on',
         'template_id', 'source_ref', 'event_label', 'alert_at', 'due_at', 'status', 'done_at',
         'assignee_seen_at', 'assignee_read_at', 'managers_read_at', 'pushed_at',
     ];
@@ -29,6 +29,7 @@ class Task extends Model
         'alert_offset' => 'integer',
         'due_offset' => 'integer',
         'last_run_on' => 'date',
+        'once_at' => 'datetime',
         'alert_at' => 'datetime',
         'due_at' => 'datetime',
         'done_at' => 'datetime',

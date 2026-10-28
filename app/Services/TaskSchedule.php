@@ -257,6 +257,32 @@ class TaskSchedule
         return $day->day === min((int) $template->repeat_day, $day->daysInMonth);
     }
 
+    /**
+     * A yearly activity (schedule «once»): its one task, made at once — its alert and deadline counted from the
+     * activity's date. Moved: the task follows while it is not finished. Stopped: no task made.
+     */
+    public static function spawnOnce(Task $template): void
+    {
+        if ($template->schedule !== 'once' || !$template->once_at || $template->status !== 'active') {
+            return;
+        }
+        $at = Carbon::parse($template->once_at->format('Y-m-d H:i:s'));
+        $label = $at->format('Y/m/d H:i');
+        $task = Task::where('template_id', $template->id)->where('source_ref', 'once')->first();
+        if (!$task) {
+            self::spawn($template, 'once', $at, $label);
+
+            return;
+        }
+        if ($task->isOpen()) {
+            $task->update([
+                'title' => $template->title, 'details' => $template->details, 'nature' => $template->nature,
+                'assignee_id' => $template->assignee_id, 'event_label' => $label,
+                'alert_at' => self::offset($at, $template->alert_offset), 'due_at' => self::offset($at, $template->due_offset),
+            ]);
+        }
+    }
+
     /** One task per appointment and event / day */
     private static function spawn(Task $template, string $ref, ?Carbon $anchor, string $label): void
     {
