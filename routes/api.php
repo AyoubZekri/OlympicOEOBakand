@@ -266,6 +266,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/debts/repay', [\App\Http\Controllers\Api\DebtController::class, 'repay']);
     Route::post('/debts/repayments/delete', [\App\Http\Controllers\Api\DebtController::class, 'destroyRepayment']);
 
+    // General goals: a goal, the member responsible for it and its season
+    Route::get('/goals', [\App\Http\Controllers\Api\GeneralGoalController::class, 'index']);
+    Route::get('/goals/options', [\App\Http\Controllers\Api\GeneralGoalController::class, 'options']);
+    Route::post('/goals/create', [\App\Http\Controllers\Api\GeneralGoalController::class, 'store']);
+    Route::post('/goals/update', [\App\Http\Controllers\Api\GeneralGoalController::class, 'update']);
+    Route::post('/goals/delete', [\App\Http\Controllers\Api\GeneralGoalController::class, 'destroy']);
+
 });
 
 use App\Http\Controllers\Api\MeetingController;
