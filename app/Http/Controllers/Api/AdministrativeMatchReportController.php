@@ -31,51 +31,51 @@ class AdministrativeMatchReportController extends Controller
         }
     }
 
-    public function save(Request $request)
+    /**
+     * The match's report: a picture of the paper report (jpg / png / webp, 5 MB at most), kept in
+     * public/uploads/match_reports (its report made if it has none yet). Sent again: it replaces it.
+     */
+    public function saveImage(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'match_id' => 'required|exists:matches,id',
-            'travel_as_planned' => 'nullable|boolean',
-            'attendance_status' => 'nullable|string|max:255',
-            'equipment_status' => 'nullable|string|max:255',
-            'equipment_notes' => 'nullable|string',
-            'accommodation_catering_notes' => 'nullable|string',
-            'organizational_incidents' => 'nullable|string',
-            'disciplinary_incidents' => 'nullable|string',
-            'refereeing_notes' => 'nullable|string',
-            'required_actions' => 'nullable|string',
+            'image' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+        ], [
+            'match_id.required' => 'المباراة غير محددة',
+            'match_id.exists' => 'المباراة غير موجودة',
+            'image.required' => 'أرفق صورة التقرير',
+            'image.mimes' => 'التقرير يجب أن يكون صورة (JPG أو PNG أو WEBP)',
+            'image.max' => 'حجم الصورة أكبر من 5 ميغا',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
+                'message' => $validator->errors()->first(),
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        try {
-            $data = $request->except(['match_id']);
-            $data['report_date'] = now();
-            if (!isset($data['admin_id'])) {
-                $data['admin_id'] = Auth::id();
-            }
-
-            $report = AdministrativeMatchReport::updateOrCreate(
-                ['match_id' => $request->match_id],
-                $data
-            );
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Report saved successfully',
-                'data' => $report->load('adminId')
-            ]);
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to save report',
-                'error' => $e->getMessage()
-            ], 500);
+        $file = $request->file('image');
+        $name = 'match_report_' . $request->match_id . '_' . time() . '.' . strtolower($file->getClientOriginalExtension());
+        $folder = public_path('uploads/match_reports');
+        if (!file_exists($folder)) {
+            mkdir($folder, 0755, true);
         }
+        $file->move($folder, $name);
+
+        $report = AdministrativeMatchReport::firstOrNew(['match_id' => $request->match_id]);
+        $report->image_path = asset('uploads/match_reports/' . $name);
+        if (!$report->exists) {
+            $report->admin_id = Auth::id();
+            $report->report_date = now();
+        }
+        $report->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Report image saved successfully',
+            'data' => $report->load('adminId')
+        ]);
     }
 }

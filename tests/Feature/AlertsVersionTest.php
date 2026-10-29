@@ -106,12 +106,16 @@ class AlertsVersionTest extends TestCase
         $match = \App\Models\Matchs::create(['competition' => 'البطولة', 'opponent' => 'النجم', 'match_date' => '2026-10-05 15:00', 'location' => 'الملعب',
             'coach_id' => $coach->id, 'admin_id' => $user->id, 'team_id' => Team::create(['name' => 'أكابر'])->id]);
 
-        $this->actingAs($user)->postJson('/api/administrative-reports/save', ['match_id' => $match->id, 'refereeing_notes' => 'تحكيم جيد'])->assertOk();
+        $report = fn () => ['match_id' => $match->id, 'image' => \Illuminate\Http\UploadedFile::fake()->create('report.jpg', 50, 'image/jpeg')];
+        $this->actingAs($user)->post('/api/administrative-reports/image', $report(), ['Accept' => 'application/json'])->assertOk();
         $v1 = $version();
 
         $this->travel(2)->seconds();
-        $this->actingAs($user)->postJson('/api/administrative-reports/save', ['match_id' => $match->id, 'refereeing_notes' => 'تحكيم سيء'])->assertOk();
-        $this->assertNotSame($v1, $version()); // the same report edited: seen at once
+        $this->actingAs($user)->post('/api/administrative-reports/image', $report(), ['Accept' => 'application/json'])->assertOk();
+        $this->assertNotSame($v1, $version()); // the same report's picture changed: seen at once
+
+        // The report's pictures saved by this test
+        array_map('unlink', glob(public_path('uploads/match_reports/match_report_' . $match->id . '_*')) ?: []);
     }
 
     public function test_editing_a_meeting_decision_changes_the_version(): void

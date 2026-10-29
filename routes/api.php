@@ -229,7 +229,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Administrative Match Reports Routes
     Route::get('/administrative-reports/{match_id}', [\App\Http\Controllers\Api\AdministrativeMatchReportController::class, 'show']);
-    Route::post('/administrative-reports/save', [\App\Http\Controllers\Api\AdministrativeMatchReportController::class, 'save']);
+    // The report: a picture of the paper report
+    Route::post('/administrative-reports/image', [\App\Http\Controllers\Api\AdministrativeMatchReportController::class, 'saveImage']);
 
     // Medical Records Routes
     Route::get('/medical-records/mine/notices', [\App\Http\Controllers\Api\PlayerMedicalRecordController::class, 'myNotices']);
