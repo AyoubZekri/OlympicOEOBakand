@@ -32,20 +32,20 @@ class AdministrativeMatchReportController extends Controller
     }
 
     /**
-     * The match's report: a picture of the paper report (jpg / png / webp, 5 MB at most), kept in
+     * The match's report: a picture or a PDF of the paper report (jpg / png / webp / pdf, 5 MB at most), kept in
      * public/uploads/match_reports (its report made if it has none yet). Sent again: it replaces it.
      */
     public function saveImage(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'match_id' => 'required|exists:matches,id',
-            'image' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'image' => 'required|file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
         ], [
             'match_id.required' => 'المباراة غير محددة',
             'match_id.exists' => 'المباراة غير موجودة',
-            'image.required' => 'أرفق صورة التقرير',
-            'image.mimes' => 'التقرير يجب أن يكون صورة (JPG أو PNG أو WEBP)',
-            'image.max' => 'حجم الصورة أكبر من 5 ميغا',
+            'image.required' => 'أرفق صورة أو ملف التقرير',
+            'image.mimes' => 'التقرير يجب أن يكون صورة أو ملف PDF',
+            'image.max' => 'حجم الملف أكبر من 5 ميغا',
         ]);
 
         if ($validator->fails()) {

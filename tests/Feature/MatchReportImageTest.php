@@ -27,10 +27,10 @@ class MatchReportImageTest extends TestCase
         $match = Matchs::create(['competition' => 'البطولة', 'opponent' => 'النجم', 'match_date' => '2026-10-05 15:00', 'location' => 'الملعب',
             'coach_id' => $coach->id, 'admin_id' => $user->id, 'team_id' => Team::create(['name' => 'أكابر'])->id]);
 
-        // A picture, needed
-        $this->upload($user, ['match_id' => $match->id])->assertStatus(422)->assertJsonPath('message', 'أرفق صورة التقرير');
-        $this->upload($user, ['match_id' => $match->id, 'image' => UploadedFile::fake()->create('report.pdf', 100, 'application/pdf')])
-            ->assertStatus(422)->assertJsonPath('message', 'التقرير يجب أن يكون صورة (JPG أو PNG أو WEBP)');
+        // A picture or a PDF, needed
+        $this->upload($user, ['match_id' => $match->id])->assertStatus(422)->assertJsonPath('message', 'أرفق صورة أو ملف التقرير');
+        $this->upload($user, ['match_id' => $match->id, 'image' => UploadedFile::fake()->create('report.docx', 100, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')])
+            ->assertStatus(422)->assertJsonPath('message', 'التقرير يجب أن يكون صورة أو ملف PDF');
 
         // Saved: the match's report made with its picture, shown with it
         $first = $this->upload($user, ['match_id' => $match->id, 'image' => UploadedFile::fake()->create('report.jpg', 200, 'image/jpeg')])
@@ -38,9 +38,9 @@ class MatchReportImageTest extends TestCase
         $this->assertStringContainsString('uploads/match_reports/match_report_' . $match->id . '_', $first);
         $this->actingAs($user)->getJson('/api/administrative-reports/' . $match->id)->assertOk()->assertJsonPath('data.image_path', $first);
 
-        // A new picture replaces it, on the same report
+        // A PDF replaces it, on the same report
         $this->travel(2)->seconds();
-        $second = $this->upload($user, ['match_id' => $match->id, 'image' => UploadedFile::fake()->create('report2.png', 200, 'image/png')])
+        $second = $this->upload($user, ['match_id' => $match->id, 'image' => UploadedFile::fake()->create('report2.pdf', 200, 'application/pdf')])
             ->assertOk()->json('data.image_path');
         $this->assertNotSame($first, $second);
         $this->assertSame(1, AdministrativeMatchReport::count());
