@@ -16,6 +16,9 @@ class Task extends Model
     /** birthday: every member's birthday (yearly), the others: every new event */
     public const EVENTS = ['match', 'training', 'travel', 'meeting', 'birthday'];
 
+    /** The appointments done once, on a date of their own: a programme, and a one-time appointment */
+    public const DATED = ['once', 'single'];
+
     protected $fillable = [
         'title', 'details', 'audio_path', 'kind', 'nature', 'assignee_id', 'created_by',
         'is_template', 'schedule', 'event_type', 'repeat', 'repeat_day', 'once_at', 'alert_offset', 'due_offset', 'last_run_on',

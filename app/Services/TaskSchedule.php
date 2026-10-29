@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
  * The tasks the appointments create:
  * - linked to an event: every new match / training session / trip / meeting creates the task (its alert and deadline
  *   counted from the event's time); the event moved → the dates follow; the event deleted → the task is cancelled;
- * - periodic: one task each week (a weekday) or each month (a day), created on that day;
+ * - periodic: one task each day, each week (a weekday) or each month (a day), created on that day;
  * - automatic (no appointment to set up): every match / training session / meeting / trip, and every active member's
  *   birthday, has its own appointment task — its alert a day before, its deadline the event's time. It shows on the
  *   home page from its alert on, and stays until its status changes (then the archive).
@@ -247,9 +247,12 @@ class TaskSchedule
         }
     }
 
-    /** weekly: 1 = Monday … 7 = Sunday; monthly: the day, or the month's last day when it is shorter */
+    /** daily: every day; weekly: 1 = Monday … 7 = Sunday; monthly: the day, or the month's last day when it is shorter */
     public static function isRepeatDay(Task $template, Carbon $day): bool
     {
+        if ($template->repeat === 'daily') {
+            return true;
+        }
         if ($template->repeat === 'weekly') {
             return $day->dayOfWeekIso === (int) $template->repeat_day;
         }
@@ -258,26 +261,27 @@ class TaskSchedule
     }
 
     /**
-     * A yearly activity (schedule «once»): its one task, made at once — its alert and deadline counted from the
-     * activity's date. Moved: the task follows while it is not finished. Stopped: no task made.
+     * A programme (schedule «once») or a one-time appointment («single»): its one task, made at once — its alert and
+     * deadline counted from its date. Moved: the task follows while it is not finished. Stopped: no task made.
      */
     public static function spawnOnce(Task $template): void
     {
-        if ($template->schedule !== 'once' || !$template->once_at || $template->status !== 'active') {
+        if (!in_array($template->schedule, Task::DATED, true) || !$template->once_at || $template->status !== 'active') {
             return;
         }
         $at = Carbon::parse($template->once_at->format('Y-m-d H:i:s'));
         $label = $at->format('Y/m/d H:i');
-        $task = Task::where('template_id', $template->id)->where('source_ref', 'once')->first();
+        // Its kind changed between the two: the same task, under its new kind
+        $task = Task::where('template_id', $template->id)->whereIn('source_ref', Task::DATED)->first();
         if (!$task) {
-            self::spawn($template, 'once', $at, $label);
+            self::spawn($template, $template->schedule, $at, $label);
 
             return;
         }
         if ($task->isOpen()) {
             $task->update([
                 'title' => $template->title, 'details' => $template->details, 'nature' => $template->nature,
-                'assignee_id' => $template->assignee_id, 'event_label' => $label,
+                'assignee_id' => $template->assignee_id, 'event_label' => $label, 'source_ref' => $template->schedule,
                 'alert_at' => self::offset($at, $template->alert_offset), 'due_at' => self::offset($at, $template->due_offset),
             ]);
         }

@@ -113,7 +113,7 @@ class TaskController extends Controller
             if ($task->schedule === 'periodic' || $task->event_type === 'birthday') {
                 TaskSchedule::generateDue(true);
             }
-            // A yearly activity: its one task, made now (it shows on the home page when its alert comes)
+            // A programme: its one task, made now (it shows on the home page when its alert comes)
             TaskSchedule::spawnOnce($task);
 
             return response()->json(['data' => $this->presentTemplate($task->fresh(['assignee', 'creator'])->loadCount(['children as tasks_count']))], 201);
@@ -160,7 +160,7 @@ class TaskController extends Controller
         }
         if ($task->is_template) {
             $task->update($fields + $this->templateFields($data));
-            // A yearly activity moved: its task follows (while not finished)
+            // A programme moved: its task follows (while not finished)
             TaskSchedule::spawnOnce($task->fresh());
 
             return response()->json(['data' => $this->presentTemplate($task->fresh(['assignee', 'creator'])->loadCount(['children as tasks_count']))]);
@@ -246,7 +246,7 @@ class TaskController extends Controller
         if ($resume && ($template->schedule === 'periodic' || $template->event_type === 'birthday')) {
             TaskSchedule::generateDue(true);
         }
-        // A yearly activity started again: its task, if it has none yet
+        // A programme started again: its task, if it has none yet
         if ($resume) {
             TaskSchedule::spawnOnce($template->fresh());
         }
@@ -401,12 +401,14 @@ class TaskController extends Controller
             'nature' => 'required|in:' . implode(',', Task::NATURES),
             'assignee_id' => 'required|integer|exists:users,id',
             'due_at' => $scheduled || $noDeadline || in_array($request->input('kind'), Task::NO_DEADLINE, true) ? 'prohibited' : 'nullable|date',
-            // event: with every new event; periodic: weekly / monthly; once: a yearly activity on its date, done once
-            'schedule' => $scheduled ? 'required|in:event,periodic,once' : 'prohibited',
-            'once_at' => $scheduled ? 'required_if:schedule,once|nullable|date' : 'prohibited',
+            // event: with every new event; periodic: daily / weekly / monthly; once: a programme on its date;
+            // single: an appointment done one time, on its date (both make one task)
+            'schedule' => $scheduled ? 'required|in:event,periodic,once,single' : 'prohibited',
+            'once_at' => $scheduled ? 'required_if:schedule,once,single|nullable|date' : 'prohibited',
             'event_type' => $scheduled ? 'required_if:schedule,event|nullable|in:' . implode(',', Task::EVENTS) : 'prohibited',
-            'repeat' => $scheduled ? 'required_if:schedule,periodic|nullable|in:weekly,monthly' : 'prohibited',
-            'repeat_day' => $scheduled ? 'required_if:schedule,periodic|nullable|integer|min:1|max:31' : 'prohibited',
+            'repeat' => $scheduled ? 'required_if:schedule,periodic|nullable|in:daily,weekly,monthly' : 'prohibited',
+            // A daily one has no day
+            'repeat_day' => $scheduled ? 'required_if:repeat,weekly,monthly|nullable|integer|min:1|max:31' : 'prohibited',
             'alert_offset' => $scheduled ? 'required|integer|between:-525600,525600' : 'prohibited',
             'due_offset' => $scheduled ? 'required|integer|between:-525600,525600|gte:alert_offset' : 'prohibited',
         ], [
@@ -415,8 +417,10 @@ class TaskController extends Controller
             'assignee_id.exists' => 'اختر المكلّف',
             'kind.required' => 'اختر النوع',
             'nature.required' => 'اختر طبيعة المهمة',
-            'schedule.required' => 'اختر: مرتبطة بحدث، دورية أو نشاط سنوي',
-            'once_at.required_if' => 'حدد تاريخ النشاط',
+            'schedule.required' => 'اختر: مرتبطة بحدث، دورية، البرنامج أو موعد',
+            'schedule.in' => 'نوع الموعد غير معروف',
+            'repeat.in' => 'التكرار غير معروف',
+            'once_at.required_if' => 'حدد التاريخ',
             'event_type.required_if' => 'اختر الحدث',
             'repeat.required_if' => 'اختر التكرار',
             'repeat_day.required_if' => 'اختر اليوم',
@@ -443,9 +447,9 @@ class TaskController extends Controller
             'schedule' => $schedule,
             'event_type' => $schedule === 'event' ? $data['event_type'] : null,
             'repeat' => $schedule === 'periodic' ? $data['repeat'] : null,
-            'repeat_day' => $schedule === 'periodic' ? $data['repeat_day'] : null,
-            // A yearly activity: its date and time (the alert and deadline are counted from it)
-            'once_at' => $schedule === 'once' ? $data['once_at'] : null,
+            'repeat_day' => $schedule === 'periodic' && $data['repeat'] !== 'daily' ? $data['repeat_day'] : null,
+            // A programme: its date and time (the alert and deadline are counted from it)
+            'once_at' => in_array($schedule, Task::DATED, true) ? $data['once_at'] : null,
             'alert_offset' => $data['alert_offset'],
             'due_offset' => $data['due_offset'],
         ];

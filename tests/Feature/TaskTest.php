@@ -210,6 +210,56 @@ class TaskTest extends TestCase
         $this->assertFalse(TaskSchedule::isRepeatDay($template, \Illuminate\Support\Carbon::parse('2026-10-30')));
     }
 
+    public function test_a_one_time_appointment_makes_its_one_task(): void
+    {
+        $manager = $this->manager();
+        $member = User::factory()->create();
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-22 09:00', 'Africa/Algiers')->utc());
+
+        // Its date is needed
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'scheduled', 'assignee_id' => $member->id, 'schedule' => 'single', 'alert_offset' => -1440, 'due_offset' => 0]))
+            ->assertStatus(422)->assertJsonValidationErrors('once_at');
+
+        // On 2026-11-05 at 10:00: alert the day before, deadline at its time — its one task at once
+        $id = $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'scheduled', 'assignee_id' => $member->id, 'schedule' => 'single',
+            'once_at' => '2026-11-05 10:00', 'alert_offset' => -1440, 'due_offset' => 0]))
+            ->assertCreated()->assertJsonPath('data.schedule', 'single')->json('data.id');
+        $task = Task::where('is_template', false)->sole();
+        $this->assertSame('single', $task->source_ref);
+        $this->assertSame('2026-11-04 10:00', $task->alert_at->format('Y-m-d H:i'));
+        $this->assertSame('2026-11-05 10:00', $task->due_at->format('Y-m-d H:i'));
+
+        // Made a programme: still its one task, under its new kind; checked again: no other
+        $this->as($manager)->postJson('/api/tasks/update', $this->task(['id' => $id, 'kind' => 'scheduled', 'assignee_id' => $member->id, 'schedule' => 'once',
+            'once_at' => '2026-11-05 10:00', 'alert_offset' => -1440, 'due_offset' => 0]))->assertOk();
+        TaskSchedule::generateDue(true);
+        $this->assertSame('once', Task::where('is_template', false)->sole()->source_ref);
+    }
+
+    public function test_a_daily_appointment_creates_a_task_every_day(): void
+    {
+        $manager = $this->manager();
+        $member = User::factory()->create();
+        // Thursday 2026-10-22, 09:00 in Algeria
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-22 09:00', 'Africa/Algiers')->utc());
+
+        // Every day: no day to pick; alert at 08:00, deadline at 18:00 — today's task at once
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'scheduled', 'assignee_id' => $member->id, 'schedule' => 'periodic', 'repeat' => 'daily', 'alert_offset' => 480, 'due_offset' => 1080]))
+            ->assertCreated();
+        $this->assertNull(Task::where('is_template', true)->first()->repeat_day);
+        $this->as($member)->getJson('/api/tasks/mine')->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.alert_at', '2026-10-22 08:00')->assertJsonPath('data.0.due_at', '2026-10-22 18:00');
+
+        // The next day: the next one
+        $this->travel(1)->days();
+        TaskSchedule::generateDue(true);
+        $this->assertSame(2, Task::where('is_template', false)->count());
+
+        // weekly and monthly still need their day
+        $this->as($manager)->postJson('/api/tasks/create', $this->task(['kind' => 'scheduled', 'assignee_id' => $member->id, 'schedule' => 'periodic', 'repeat' => 'weekly', 'alert_offset' => 480, 'due_offset' => 1080]))
+            ->assertStatus(422)->assertJsonValidationErrors('repeat_day');
+    }
+
     public function test_a_periodic_alert_before_its_day_creates_the_task_ahead(): void
     {
         $manager = $this->manager();
