@@ -42,7 +42,9 @@ class AbsenceController extends Controller
             $query->whereIn('justification_status', array_keys(self::STATUS_VALUES, $status, true) ?: [$status]);
         }
 
-        $absences = $query->get()->map(fn ($rec) => $this->present($rec));
+        // mine: a record of the signed-in user's own member (its decision is someone else's)
+        $mine = $this->myMemberIds($request)->all();
+        $absences = $query->get()->map(fn ($rec) => $this->present($rec) + ['mine' => in_array($rec->player_id, $mine)]);
 
         return response()->json($absences);
     }
@@ -96,6 +98,10 @@ class AbsenceController extends Controller
 
         try {
             $absence = AppAbsence::findOrFail($validated['id']);
+            // Nobody accepts or refuses their own request or justification: another manager decides
+            if (in_array($status, ['accepted', 'rejected'], true) && $this->myMemberIds($request)->contains($absence->player_id)) {
+                return response()->json(['message' => 'لا يمكنك اتخاذ قرار في طلبك أو تبريرك، ينتظر قرار مسؤول آخر'], 403);
+            }
             $absence->justification_status = $status;
             $absence->is_justified         = $status === 'accepted';
             $absence->reason               = $validated['justification_text'] ?? $absence->reason;

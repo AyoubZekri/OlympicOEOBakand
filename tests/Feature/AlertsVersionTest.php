@@ -92,8 +92,9 @@ class AlertsVersionTest extends TestCase
         $v2 = $version();
         $this->assertNotSame($v1, $v2); // justified: the manager is told
 
+        // Decided by a manager (not the member: nobody decides on their own justification)
         $this->travel(2)->seconds();
-        $this->actingAs($user)->postJson('/api/absences/update-justification', ['id' => $absence->id, 'justification_status' => 'مرفوض', 'decision_note' => 'لا توجد وثيقة'])->assertOk();
+        $this->actingAs(User::factory()->create())->postJson('/api/absences/update-justification', ['id' => $absence->id, 'justification_status' => 'مرفوض', 'decision_note' => 'لا توجد وثيقة'])->assertOk();
         $this->assertNotSame($v2, $version()); // decided: the member is told
     }
 

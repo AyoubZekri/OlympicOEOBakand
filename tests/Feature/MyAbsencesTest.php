@@ -259,4 +259,31 @@ class MyAbsencesTest extends TestCase
         $send(['kind' => 'absence', 'event_category' => 'اجتماع', 'event_date' => '2026-10-08'])->assertStatus(422)->assertJsonPath('message', 'اكتب السبب أو أرفق وثيقة');
         $this->assertSame(3, AppAbsence::count());
     }
+
+    public function test_a_manager_does_not_decide_on_their_own_request(): void
+    {
+        $manager = User::factory()->create();
+        $other = User::factory()->create();
+        $team = Team::create(['name' => 'أكابر']);
+        $me = Individual::create(['type' => 'staff', 'first_name' => 'مسير', 'last_name' => 'أول', 'user_id' => $manager->id, 'team_id' => $team->id]);
+        $mate = Individual::create(['type' => 'player', 'first_name' => 'ياسين', 'last_name' => 'كريم', 'team_id' => $team->id]);
+        $mine = AppAbsence::create(['player_id' => $me->id, 'absence_type' => 'طلب عطلة', 'event_date' => '2026-10-10', 'justification_status' => 'pending']);
+        $theirs = AppAbsence::create(['player_id' => $mate->id, 'absence_type' => 'غياب', 'event_date' => '2026-10-09', 'justification_status' => 'pending']);
+
+        // The list marks my own records
+        $list = collect($this->actingAs($manager)->getJson('/api/absences')->assertOk()->json())->keyBy('id');
+        $this->assertTrue($list[$mine->id]['mine']);
+        $this->assertFalse($list[$theirs->id]['mine']);
+
+        // Neither accepted nor refused by myself
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $mine->id, 'justification_status' => 'accepted'])
+            ->assertForbidden()->assertJsonPath('message', 'لا يمكنك اتخاذ قرار في طلبك أو تبريرك، ينتظر قرار مسؤول آخر');
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $mine->id, 'justification_status' => 'rejected', 'decision_note' => 'لا'])->assertForbidden();
+        $this->assertSame('pending', $mine->refresh()->justification_status);
+
+        // Someone else's: decided; mine: by another manager
+        $this->actingAs($manager)->postJson('/api/absences/update-justification', ['id' => $theirs->id, 'justification_status' => 'accepted'])->assertOk();
+        $this->actingAs($other)->postJson('/api/absences/update-justification', ['id' => $mine->id, 'justification_status' => 'accepted'])->assertOk();
+        $this->assertSame('accepted', $mine->refresh()->justification_status);
+    }
 }
