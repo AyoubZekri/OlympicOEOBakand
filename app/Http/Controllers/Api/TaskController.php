@@ -264,12 +264,13 @@ class TaskController extends Controller
         return response()->json(['message' => 'تم الحذف']);
     }
 
-    /** Several tasks at once (the home page's selection); appointments are deleted one by one */
+    /** Several at once: the home page's tasks, or (templates) the appointments page's appointments */
     public function destroyMany(Request $request)
     {
-        $ids = $request->validate(['ids' => 'required|array|min:1', 'ids.*' => 'integer'])['ids'];
-        $this->allow($request, 'delete', 'tasks');
-        $deleted = Task::where('is_template', false)->whereIn('id', $ids)->get()->each->delete()->count();
+        $data = $request->validate(['ids' => 'required|array|min:1', 'ids.*' => 'integer', 'templates' => 'sometimes|boolean']);
+        $templates = (bool) ($data['templates'] ?? false);
+        $this->allow($request, 'delete', $templates ? 'appointments' : 'tasks');
+        $deleted = Task::where('is_template', $templates)->whereIn('id', $data['ids'])->get()->each->delete()->count();
 
         return response()->json(['message' => 'تم الحذف', 'deleted' => $deleted]);
     }
