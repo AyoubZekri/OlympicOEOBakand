@@ -95,7 +95,7 @@ class UserController extends Controller
     /** Full-access roles, or roles with usersAndRoles.editUsers */
     private function canManageUsers(?User $user): bool
     {
-        $role = $user?->role;
+        $role = $user?->effectiveRole();
         if (!$role) {
             return false;
         }
@@ -104,6 +104,27 @@ class UserController extends Controller
         }
         $permissions = is_string($role->permissions) ? json_decode($role->permissions, true) : (array) $role->permissions;
         return ($permissions['usersAndRoles']['editUsers'] ?? false) === true;
+    }
+
+    /**
+     * A member's own permissions, in place of their role's (null: back to the role's). From the role's window, by who
+     * may edit roles.
+     */
+    public function permissions(Request $request)
+    {
+        $actor = $request->user();
+        if (!\App\Services\RolePermissions::can($actor, 'usersAndRoles', 'editRoles')) {
+            return response()->json(['message' => 'ليست لديك صلاحية تعديل الأدوار'], 403);
+        }
+        $data = $request->validate(['id' => 'required|integer|exists:users,id', 'permissions' => 'nullable|string']);
+        if ((int) $data['id'] === (int) $actor->id) {
+            return response()->json(['message' => 'لا يمكنك تغيير صلاحياتك بنفسك'], 422);
+        }
+        $user = User::findOrFail($data['id']);
+        $user->permissions = $data['permissions'] ?? null;
+        $user->save();
+
+        return response()->json(['message' => 'تم الحفظ', 'permissions' => $user->permissions]);
     }
 
     public function destroy(Request $request)

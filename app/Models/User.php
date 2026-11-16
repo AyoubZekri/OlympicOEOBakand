@@ -78,6 +78,26 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * The role this user's rights are read from: their role, or — when they have permissions of their own — the same
+     * role with those permissions instead (partial, never saved). Every permission check goes through it.
+     */
+    public function effectiveRole(): ?Role
+    {
+        $role = $this->role;
+        if ($this->permissions === null || $this->permissions === '') {
+            return $role;
+        }
+        $own = $role ? $role->replicate() : new Role(['name' => '']);
+        if ($role) {
+            $own->id = $role->id;
+        }
+        $own->type = 'partial';
+        $own->permissions = $this->permissions;
+
+        return $own;
+    }
+
     public function individual()
     {
         return $this->hasOne(Individual::class);

@@ -97,6 +97,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/roles/show', [RoleController::class, 'show']);
     Route::post('/roles/update', [RoleController::class, 'update']);
     Route::post('/roles/delete', [RoleController::class, 'destroy']);
+    // A member's own permissions, in place of their role's
+    Route::post('/users/permissions', [\App\Http\Controllers\Api\UserController::class, 'permissions']);
     // The roles page's sections
     Route::get('/role-sections', [\App\Http\Controllers\Api\RoleSectionController::class, 'index']);
     Route::post('/role-sections/create', [\App\Http\Controllers\Api\RoleSectionController::class, 'store']);

@@ -24,7 +24,8 @@ class AuthController extends Controller
                 'message' => 'User logged in successfully',
                 'data' => [
                     'user' => $user,
-                    'role' => $user->role,
+                    // Their own permissions, when they have some, in place of the role's
+                    'role' => $user->effectiveRole(),
                     'individual' => $user->individual,
                     'token' => $token
                 ]
@@ -54,7 +55,7 @@ class AuthController extends Controller
             'status' => 'success',
             'data' => [
                 'user' => $user,
-                'role' => $user->role,
+                'role' => $user->effectiveRole(),
                 'individual' => $user->individual
             ]
         ]);

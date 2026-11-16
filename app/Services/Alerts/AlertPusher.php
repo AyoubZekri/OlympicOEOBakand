@@ -202,13 +202,14 @@ class AlertPusher
     /** Has the management space: not a player, and a full role or one that sees some section */
     private static function canManage(User $user): bool
     {
-        if (($user->individual?->type ?? null) === 'player' || !$user->role) {
+        $role = $user->effectiveRole();
+        if (($user->individual?->type ?? null) === 'player' || !$role) {
             return false;
         }
-        if (strtolower((string) $user->role->type) === 'full') {
+        if (strtolower((string) $role->type) === 'full') {
             return true;
         }
-        $permissions = is_string($user->role->permissions) ? json_decode($user->role->permissions, true) : (array) $user->role->permissions;
+        $permissions = is_string($role->permissions) ? json_decode($role->permissions, true) : (array) $role->permissions;
 
         return is_array($permissions) && collect($permissions)->contains(fn ($p) => is_array($p) && ($p['view'] ?? false) === true);
     }

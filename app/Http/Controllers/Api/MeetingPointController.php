@@ -24,7 +24,7 @@ class MeetingPointController extends Controller
     /** Full-access roles, roles with meetings.edit, and roles saved before the permissions (the meetings were open to all) */
     private function managesMeetings(?User $user): bool
     {
-        $role = $user?->role;
+        $role = $user?->effectiveRole();
         if (!$role) {
             return false;
         }

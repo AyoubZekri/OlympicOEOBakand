@@ -65,11 +65,13 @@ class RoleController extends Controller
     private function syncUsers(Role $role, array $userIds, ?User $actor): void
     {
         $ids = array_map('intval', $userIds);
-        User::whereIn('id', $ids)->update(['role_id' => $role->id]);
+        // Coming from another role (or none): their own permissions were for that one
+        User::whereIn('id', $ids)->where(fn ($q) => $q->whereNull('role_id')->orWhere('role_id', '!=', $role->id))
+            ->update(['role_id' => $role->id, 'permissions' => null]);
         User::where('role_id', $role->id)
             ->whereNotIn('id', $ids)
             ->when($actor, fn ($q) => $q->where('id', '!=', $actor->id))
-            ->update(['role_id' => null]);
+            ->update(['role_id' => null, 'permissions' => null]);
     }
 
     public function destroy(Request $request)

@@ -29,7 +29,7 @@ class RolePermissions
 
     public static function can(?User $user, string $module, string $action): bool
     {
-        $role = $user?->role;
+        $role = $user?->effectiveRole();
         if (!$role) {
             return false;
         }
