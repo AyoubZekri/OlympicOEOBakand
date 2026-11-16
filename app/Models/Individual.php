@@ -32,6 +32,12 @@ class Individual extends Model
         'bank_account_number',
     ];
 
+    /** Its other documents (beside the three fixed ones), oldest first */
+    public function documents()
+    {
+        return $this->hasMany(MemberDocument::class)->orderBy('id');
+    }
+
     public function team()
     {
         return $this->belongsTo(Team::class);

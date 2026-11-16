@@ -488,8 +488,7 @@ class TaskController extends Controller
             'due_at' => $t->due_at?->format('Y-m-d H:i'),
             'event_label' => $t->event_label,
             // Where it comes from: an event (match, training, travel, meeting), periodic, or given directly
-            'source' => $t->template?->schedule === 'event' ? $t->template->event_type
-                : ($t->template?->schedule === 'periodic' ? 'periodic' : ($t->source_ref ? strtok($t->source_ref, ':') : null)),
+            'source' => $this->sourceOf($t),
             'template_id' => $t->template_id,
             // The event it was created for, to open it: a match / training session / meeting / trip, or the member (a birthday)
             'event' => $this->eventOf($t->source_ref),
@@ -509,6 +508,23 @@ class TaskController extends Controller
     }
 
     /** «match:5» → match 5; «birthday:12:2026» → the member 12; a periodic day → none */
+    /**
+     * Where a task comes from: its appointment's event or «periodic», else what its reference names (an event, or a
+     * dated appointment) — never anything else (a task whose appointment was deleted keeps only a date as reference)
+     */
+    private function sourceOf(Task $t): ?string
+    {
+        if ($t->template?->schedule === 'event') {
+            return $t->template->event_type;
+        }
+        if ($t->template?->schedule === 'periodic') {
+            return 'periodic';
+        }
+        $prefix = $t->source_ref ? strtok($t->source_ref, ':') : null;
+
+        return in_array($prefix, [...Task::EVENTS, ...Task::DATED], true) ? $prefix : null;
+    }
+
     private function eventOf(?string $ref): ?array
     {
         $parts = explode(':', (string) $ref);

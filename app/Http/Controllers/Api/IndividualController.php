@@ -8,13 +8,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Individual;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Storage;
 
 class IndividualController extends Controller
 {
     public function index()
     {
         // Load the relationship for addedBy and team if needed
-        $individuals = Individual::with(['addedBy', 'team'])->get();
+        $individuals = Individual::with(['addedBy', 'team', 'documents'])->get();
         return response()->json($individuals);
     }
 
@@ -42,7 +43,14 @@ class IndividualController extends Controller
             'team_id' => 'nullable|exists:teams,id',
             'added_by' => 'nullable|exists:users,id',
             'photo' => 'nullable|file|mimes:jpeg,png,jpg,gif,svg,webp,heic,heif|max:5120',
+            // Other documents: each a name and its file; and (editing) the ones taken off
+            'extra_documents' => 'sometimes|array',
+            'extra_documents.*.name' => 'required|string|max:255',
+            'extra_documents.*.file' => 'required|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            'remove_documents' => 'sometimes|array',
+            'remove_documents.*' => 'integer',
         ]);
+        unset($validated['extra_documents'], $validated['remove_documents']);
 
         if ($request->hasFile('photo')) {
             $validated['photo'] = $request->file('photo')->store('photos', 'public');
@@ -65,8 +73,9 @@ class IndividualController extends Controller
             return response()->json(['message' => 'هذا البريد الإلكتروني مستعمل في حساب مستخدم آخر'], 422);
         }
 
-        [$individual, $account] = DB::transaction(function () use ($validated) {
+        [$individual, $account] = DB::transaction(function () use ($validated, $request) {
             $individual = Individual::create($validated);
+            $this->saveDocuments($individual, $request);
             $account = MemberAccount::sync($individual);
             return [$individual->fresh(), $account];
         });
@@ -109,7 +118,14 @@ class IndividualController extends Controller
             'team_id' => 'nullable|exists:teams,id',
             'added_by' => 'nullable|exists:users,id',
             'photo' => 'nullable|file|mimes:jpeg,png,jpg,gif,svg,webp,heic,heif|max:5120',
+            // Other documents: each a name and its file; and (editing) the ones taken off
+            'extra_documents' => 'sometimes|array',
+            'extra_documents.*.name' => 'required|string|max:255',
+            'extra_documents.*.file' => 'required|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
+            'remove_documents' => 'sometimes|array',
+            'remove_documents.*' => 'integer',
         ]);
+        unset($validated['extra_documents'], $validated['remove_documents']);
 
         if ($request->hasFile('photo')) {
             $validated['photo'] = $request->file('photo')->store('photos', 'public');
@@ -131,13 +147,36 @@ class IndividualController extends Controller
             return response()->json(['message' => 'هذا البريد الإلكتروني مستعمل في حساب مستخدم آخر'], 422);
         }
 
-        DB::transaction(function () use ($individual, $validated) {
+        DB::transaction(function () use ($individual, $validated, $request) {
             $individual->update($validated);
+            $this->saveDocuments($individual, $request);
             // The account follows the member's name and email (and is created for members added before accounts)
             MemberAccount::sync($individual);
         });
 
-        return response()->json(['message' => 'Individual updated successfully', 'individual' => $individual->fresh()]);
+        return response()->json(['message' => 'Individual updated successfully', 'individual' => $individual->fresh(['team', 'documents'])]);
+    }
+
+    /** The member's other documents: the new ones (a name and a file each) stored, the removed ones deleted */
+    private function saveDocuments(Individual $individual, Request $request): void
+    {
+        foreach ((array) $request->input('extra_documents', []) as $i => $doc) {
+            $file = $request->file("extra_documents.$i.file");
+            if (!$file) {
+                continue;
+            }
+            $individual->documents()->create([
+                'name' => trim((string) ($doc['name'] ?? '')) ?: 'وثيقة',
+                'file' => $file->store('documents', 'public'),
+            ]);
+        }
+        $remove = array_map('intval', (array) $request->input('remove_documents', []));
+        if ($remove) {
+            $individual->documents()->whereIn('id', $remove)->get()->each(function ($doc) {
+                Storage::disk('public')->delete($doc->file);
+                $doc->delete();
+            });
+        }
     }
 
     public function destroy(Request $request)
