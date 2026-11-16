@@ -10,5 +10,6 @@ class Role extends Model
         'name',
         'type',
         'permissions',
+        'section_id',
     ];
 }
