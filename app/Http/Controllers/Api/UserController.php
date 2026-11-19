@@ -13,8 +13,8 @@ class UserController extends Controller
 {
     public function index()
     {
-        // The member linked to each account (its type, and its photo for the account's picture)
-        return response()->json(User::with('individual:id,user_id,type,photo')->get());
+        // The member linked to each account (its type, and its photo for the account's picture), and its one role's name
+        return response()->json(User::with(['individual:id,user_id,type,photo', 'role:id,name'])->get());
     }
 
     public function store(Request $request)
