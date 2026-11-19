@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Individual;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -23,13 +25,22 @@ class UserController extends Controller
             'password' => 'required|string|min:6',
             'role_id' => 'nullable|exists:roles,id',
             'profile_image' => 'nullable|string',
+            // The member's post: every user is a member too (added with the account)
+            'type' => 'nullable|string|max:50',
         ]);
 
         $plain = $validated['password'];
-        unset($validated['password']);
-        $user = new User($validated);
-        $user->setPasswordWithCopy($plain);
-        $user->save();
+        $type = $validated['type'] ?? null;
+        unset($validated['password'], $validated['type']);
+        $user = DB::transaction(function () use ($validated, $plain, $type) {
+            $user = new User($validated);
+            $user->setPasswordWithCopy($plain);
+            $user->save();
+            if ($type) {
+                $this->memberOf($user, $type);
+            }
+            return $user;
+        });
 
         return response()->json(['message' => 'User created successfully', 'user' => $user], 201);
     }
@@ -52,10 +63,16 @@ class UserController extends Controller
             'fcm_token' => 'nullable|string',
             'role_id' => 'nullable|exists:roles,id',
             'profile_image' => 'nullable|string',
+            'type' => 'nullable|string|max:50',
         ]);
 
         $plain = $validated['password'] ?? null;
-        unset($validated['password']);
+        $type = $validated['type'] ?? null;
+        unset($validated['password'], $validated['type']);
+        // Another role: their own permissions were for the old one
+        if (array_key_exists('role_id', $validated) && (string) $validated['role_id'] !== (string) $user->role_id) {
+            $user->permissions = null;
+        }
         $user->fill($validated);
         if ($plain) {
             $user->setPasswordWithCopy($plain);
@@ -63,6 +80,10 @@ class UserController extends Controller
         $user->save();
         // A member's account: the member's name and email follow (the other direction is in IndividualController)
         \App\Services\MemberAccount::syncFromUser($user);
+        // Its post: the member's type (an account without a member gets one)
+        if ($type) {
+            $this->memberOf($user, $type);
+        }
 
         return response()->json(['message' => 'User updated successfully', 'user' => $user]);
     }
@@ -125,6 +146,30 @@ class UserController extends Controller
         $user->save();
 
         return response()->json(['message' => 'تم الحفظ', 'permissions' => $user->permissions]);
+    }
+
+    /** The account's member, with this post: updated, or added (its name split as the member's first and last name) */
+    private function memberOf(User $user, string $type): Individual
+    {
+        $member = Individual::where('user_id', $user->id)->first();
+        if ($member) {
+            if ($member->type !== $type) {
+                $member->type = $type;
+                $member->save();
+            }
+            return $member;
+        }
+        $words = preg_split('/\s+/u', trim((string) $user->name), -1, PREG_SPLIT_NO_EMPTY) ?: ['عضو'];
+        $first = array_shift($words);
+
+        return Individual::create([
+            'first_name' => $first,
+            'last_name' => $words ? implode(' ', $words) : $first,
+            'type' => $type,
+            'email' => $user->email,
+            'status' => 'active',
+            'user_id' => $user->id,
+        ]);
     }
 
     public function destroy(Request $request)
