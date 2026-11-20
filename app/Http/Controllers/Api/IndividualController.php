@@ -49,8 +49,11 @@ class IndividualController extends Controller
             'extra_documents.*.file' => 'required|file|mimes:pdf,jpeg,png,jpg,webp|max:5120',
             'remove_documents' => 'sometimes|array',
             'remove_documents.*' => 'integer',
+            // The account's password, when it is chosen (from a role's window); else a random one
+            'password' => 'nullable|string|min:6|max:50',
         ]);
-        unset($validated['extra_documents'], $validated['remove_documents']);
+        $password = $validated['password'] ?? null;
+        unset($validated['extra_documents'], $validated['remove_documents'], $validated['password']);
 
         if ($request->hasFile('photo')) {
             $validated['photo'] = $request->file('photo')->store('photos', 'public');
@@ -73,10 +76,15 @@ class IndividualController extends Controller
             return response()->json(['message' => 'هذا البريد الإلكتروني مستعمل في حساب مستخدم آخر'], 422);
         }
 
-        [$individual, $account] = DB::transaction(function () use ($validated, $request) {
+        [$individual, $account] = DB::transaction(function () use ($validated, $request, $password) {
             $individual = Individual::create($validated);
             $this->saveDocuments($individual, $request);
             $account = MemberAccount::sync($individual);
+            if ($password) {
+                $account['user']->setPasswordWithCopy($password);
+                $account['user']->save();
+                $account['password'] = $password;
+            }
             return [$individual->fresh(), $account];
         });
 
